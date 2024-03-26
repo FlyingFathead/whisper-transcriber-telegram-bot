@@ -10,7 +10,8 @@ This Whisper Transcriber Telegram Bot is a Python-based bot designed to transcri
 
 - Processes YouTube URLs sent by users.
 - Downloads audio from YouTube videos using `yt-dlp`.
-- Transcribes audio using OpenAI's Whisper model.
+- Transcribes audio using OpenAI's Whisper model
+- (Uses a local model from the `openai-whisper` package)
 - Returns transcription in text, SRT, and VTT formats.
 - Handles concurrent transcription requests gracefully.
 
