@@ -1,0 +1,2 @@
+# Ignore all files named bot_token.txt
+**/bot_token.txt
