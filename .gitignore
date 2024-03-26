@@ -7,3 +7,6 @@ config/bot_token.txt
 # Python cache files
 __pycache__/
 *.pyc
+
+# transcriptions directory
+transcriptions/
