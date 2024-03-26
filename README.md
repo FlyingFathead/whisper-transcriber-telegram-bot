@@ -4,7 +4,7 @@ A Python-based Whisper transcriber bot for Telegram.
 
 ## About
 
-This Whisper Transcriber Telegram Bot is a Python-based bot designed to transcribe audio from YouTube videos using OpenAI's Whisper model. Users can send YouTube URLs to the bot, which then processes the audio and returns the transcription in various formats.
+This is a Whisper AI Transcriber Telegram Bot is a Python-based bot designed to transcribe audio from YouTube videos using OpenAI's Whisper model. Users can send YouTube URLs to the bot, which then processes the audio and returns the transcription in various formats.
 
 ## Features
 
@@ -44,6 +44,11 @@ After launching the bot, you can interact with it via Telegram:
 1. Send a YouTube video URL to the bot.
 2. The bot will acknowledge the request and begin processing.
 3. Once processing is complete, the bot will send the transcription files to you.
+
+## Changes
+
+v0.02 - add video information to the transcript text file (`config.ini` => `IncludeHeaderInTranscription = True`)
+v0.01 - initial commit
 
 ## Contributing
 

@@ -42,3 +42,20 @@ def get_bot_token():
     # Fallback error message
     print("The bot token could not be determined.")
     sys.exit(1)
+
+def get_transcription_settings():
+    # Use the same base directory resolution as in get_bot_token
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    config_path = os.path.join(base_dir, 'config', 'config.ini')
+
+    if not os.path.exists(config_path):
+        print("Error: config.ini not found at the expected path.")
+        sys.exit(1)
+
+    config = configparser.ConfigParser()
+    config.read(config_path)
+    include_header = config.getboolean('TranscriptionSettings', 'IncludeHeaderInTranscription', fallback=False)
+
+    return {
+        'include_header': include_header
+    }

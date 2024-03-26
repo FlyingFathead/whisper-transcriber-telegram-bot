@@ -1,4 +1,10 @@
 # transcription_handler.py
+# ~~~~~~~
+# openai-whisper transcriber-bot for Telegram
+# v0.02
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 import time
 import logging
@@ -6,6 +12,10 @@ import re
 import asyncio
 import json
 import os
+import textwrap
+
+# import other stuff
+from utils.bot_token import get_transcription_settings
 
 # Toggle this to use the full description or a snippet.
 USE_SNIPPET_FOR_DESCRIPTION = False
@@ -32,16 +42,16 @@ async def download_audio(url, output_path):
     else:
         logger.error(f"Failed to download audio: {output_path}")
 
-# transcription logic
-async def transcribe_audio(audio_path, output_dir, youtube_url):
+# transcription logic with header inclusion based on settings
+async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header):
     logger.info(f"Starting transcription for: {audio_path}")
-    
+
     transcription_command = ["whisper", audio_path, "--output_dir", output_dir]
-    # transcription_command = ["whisper", audio_path, "--model", "medium-v3", "--output_dir", output_dir]
+    # Alternatively, specify a model if needed: ["whisper", audio_path, "--model", "medium-v3", "--output_dir", output_dir]
 
     process = await asyncio.create_subprocess_exec(
-        *transcription_command, 
-        stdout=asyncio.subprocess.PIPE, 
+        *transcription_command,
+        stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
 
@@ -51,24 +61,34 @@ async def transcribe_audio(audio_path, output_dir, youtube_url):
     if process.returncode != 0:
         logger.error(f"Whisper process failed with return code {process.returncode}")
         logger.error(f"Whisper STDERR: {stderr.decode()}")
-    else:
-        logger.info(f"Whisper transcription completed for: {audio_path}")
+        return {}
 
-    # Verify and log the generated files
+    logger.info(f"Whisper transcription completed for: {audio_path}")
+
+    # Generate the header if needed
+    header_content = ""
+
+    # Use video_info_message directly if include_header is True
+    if include_header:
+        header_content = video_info_message
+
+    # Verify and log the generated files, adding header to .txt file
     base_filename = os.path.splitext(os.path.basename(audio_path))[0]
-    transcript_files = {
-        'txt': f"{output_dir}/{base_filename}.txt",
-        'srt': f"{output_dir}/{base_filename}.srt",
-        'vtt': f"{output_dir}/{base_filename}.vtt",
-    }
-
     created_files = {}
-    for fmt, path in transcript_files.items():
-        if os.path.exists(path) and os.path.getsize(path) > 0:
-            logger.info(f"Transcription file created: {path}")
-            created_files[fmt] = path
+
+    for fmt in ['txt', 'srt', 'vtt']:
+        file_path = f"{output_dir}/{base_filename}.{fmt}"
+        if fmt == 'txt' and include_header and os.path.exists(file_path):
+            # Prepend the header for txt file
+            with open(file_path, 'r') as original: data = original.read()
+            with open(file_path, 'w') as modified: modified.write(header_content + data)
+            
+        # Log the creation and update of each file
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+            logger.info(f"Transcription file {'updated' if fmt == 'txt' and include_header else 'created'}: {file_path}")
+            created_files[fmt] = file_path
         else:
-            logger.warning(f"Expected transcription file not found or empty: {path}")
+            logger.warning(f"Expected transcription file not found or empty: {file_path}")
 
     return created_files
 
@@ -94,6 +114,38 @@ async def process_url_message(message_text, bot, update):
             await bot.send_message(chat_id=update.effective_chat.id, text="Failed to fetch video details.")
             continue
 
+        # Header generation // separator
+        header_separator = "-" * 79  # Creates a string of 79 dashes
+
+        # Creating the video information message
+        video_info_message = textwrap.dedent(f"""\
+        {header_separator}
+        Title: {details.get('title', 'No title available')}
+        Duration: {details.get('duration', 'No duration available')}
+        Channel: {details.get('channel', 'No channel information available')}
+        Upload Date: {details.get('upload_date', 'No upload date available')}
+        Views: {details.get('views', 'No views available')}
+        Likes: {details.get('likes', 'No likes available')}
+        Average Rating: {details.get('average_rating', 'No rating available')}
+        Comment Count: {details.get('comment_count', 'No comment count available')}
+        Channel ID: {details.get('channel_id', 'No channel ID available')}
+        Video ID: {details.get('video_id', 'No video ID available')}
+        Tags: {', '.join(details.get('tags', ['No tags available']))}
+        Description: 
+        {details.get('description', 'No description available')[:1000]}
+        {header_separator}
+        """).strip()
+
+        # Send the video's info as a message to the user
+        # await bot.send_message(chat_id=update.effective_chat.id, text=video_info_message)
+
+        # Send the video's info as a message to the user in a code block
+        await bot.send_message(
+            chat_id=update.effective_chat.id, 
+            text=f"<code>{video_info_message}</code>", 
+            parse_mode='HTML'
+        )
+
         # Inform user about the video being processed
         title = details.get('title', 'No title available')
         await bot.send_message(chat_id=update.effective_chat.id, text=f"Title: {title}\nDownloading audio for transcription...")
@@ -108,7 +160,12 @@ async def process_url_message(message_text, bot, update):
 
         # Inform user that transcription has started
         await bot.send_message(chat_id=update.effective_chat.id, text="Transcribing audio...")
-        transcription_paths = await transcribe_audio(audio_path, output_dir, youtube_url)
+        
+        # In process_url_message, before calling transcribe_audio:
+        settings = get_transcription_settings()
+
+        # Pass settings down to transcribe_audio function:
+        transcription_paths = await transcribe_audio(audio_path, output_dir, youtube_url, video_info_message if settings['include_header'] else None, settings['include_header'])
 
         if not transcription_paths:
             await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")
