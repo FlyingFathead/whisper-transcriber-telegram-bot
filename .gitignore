@@ -1,2 +1,4 @@
 # Ignore all files named bot_token.txt
 **/bot_token.txt
+# Prevent bot_token.txt from being tracked
+config/bot_token.txt

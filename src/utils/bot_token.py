@@ -3,11 +3,12 @@ import os
 import sys
 import configparser
 
-# set `prefer_env` to `True` if you wish to prioritize the environment variable over the configuration text file
-# (determines load order)
 def get_bot_token():
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    # Adjust the path relative to the location of the script in `src`
+    config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.ini')
+    config.read(config_path)
+
     prefer_env = config.getboolean('DEFAULT', 'PreferEnvForBotToken', fallback=True)
 
     if prefer_env:
@@ -16,7 +17,9 @@ def get_bot_token():
             return bot_token
 
     try:
-        with open('bot_token.txt', 'r') as file:
+        # Adjust the path for `bot_token.txt` as well, assuming it's in the same directory as `config.ini`
+        token_file_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'bot_token.txt')
+        with open(token_file_path, 'r') as file:
             return file.read().strip()
     except FileNotFoundError:
         if not prefer_env:
