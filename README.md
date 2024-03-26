@@ -1,6 +1,6 @@
 # whisper-transcriber-telegram-bot
 
-Python-based Whisper transcriber bot for Telegram
+A Python-based Whisper transcriber bot for Telegram.
 
 ## About
 
@@ -52,7 +52,3 @@ Contributions are welcome! If you have suggestions for improvements or bug fixes
 
 - [FlyingFathead](https://github.com/FlyingFathead) - Project creator
 - ChaosWhisperer - Contributions to the Whisper integration and documentation
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
