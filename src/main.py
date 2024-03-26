@@ -1,6 +1,9 @@
 # main.py
 # ~~~~~~~
 # transcriber-bot for TG
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 import asyncio
 import logging
