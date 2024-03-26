@@ -70,7 +70,7 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
 
     # Use video_info_message directly if include_header is True
     if include_header:
-        header_content = video_info_message
+        header_content = f"\n{video_info_message}\n\n"
 
     # Verify and log the generated files, adding header to .txt file
     base_filename = os.path.splitext(os.path.basename(audio_path))[0]
