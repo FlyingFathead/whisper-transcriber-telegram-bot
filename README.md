@@ -47,7 +47,8 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
-- v0.02 - add video information to the transcript text file (`config.ini` => `IncludeHeaderInTranscription = True`)
+- v0.02 - add video information to the transcript text file 
+    (see: `config.ini` => `IncludeHeaderInTranscription = True`)
 - v0.01 - initial commit
 
 ## Contributing
