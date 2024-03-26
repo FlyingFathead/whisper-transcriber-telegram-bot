@@ -115,10 +115,10 @@ async def process_url_message(message_text, bot, update):
             continue
 
         # Header generation // separator
-        header_separator = "-" * 79  # Creates a string of 79 dashes
+        header_separator = "=" * 3  # header separator in dashes
 
         # Creating the video information message
-        video_info_message = textwrap.dedent(f"""\
+        video_info_message_placeholder = f"""\
         {header_separator}
         Title: {details.get('title', 'No title available')}
         Duration: {details.get('duration', 'No duration available')}
@@ -134,7 +134,18 @@ async def process_url_message(message_text, bot, update):
         Description: 
         {details.get('description', 'No description available')[:1000]}
         {header_separator}
-        """).strip()
+        """
+
+        # Dedent the placeholder string
+        video_info_message_dedented = textwrap.dedent(video_info_message_placeholder)
+
+        # Strip leading whitespace from each line individually
+        video_info_message_stripped = "\n".join(line.lstrip() for line in video_info_message_dedented.splitlines())
+
+        # Debugging output to ensure it's processed as expected
+        logging.info(f"Debug Video Info Message Stripped: {video_info_message_stripped}")
+
+        video_info_message = video_info_message_stripped
 
         # Send the video's info as a message to the user
         # await bot.send_message(chat_id=update.effective_chat.id, text=video_info_message)
