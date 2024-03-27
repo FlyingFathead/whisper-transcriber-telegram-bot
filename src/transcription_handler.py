@@ -46,7 +46,8 @@ async def download_audio(url, output_path):
 async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header):
     logger.info(f"Starting transcription for: {audio_path}")
 
-    transcription_command = ["whisper", audio_path, "--output_dir", output_dir]
+    # transcription_command = ["whisper", audio_path, "--output_dir", output_dir]
+    transcription_command = ["whisper", audio_path, "--model", "medium", "--output_dir", output_dir]
     # Alternatively, specify a model if needed: ["whisper", audio_path, "--model", "medium-v3", "--output_dir", output_dir]
 
     process = await asyncio.create_subprocess_exec(
@@ -130,6 +131,7 @@ async def process_url_message(message_text, bot, update):
         Comment Count: {details.get('comment_count', 'No comment count available')}
         Channel ID: {details.get('channel_id', 'No channel ID available')}
         Video ID: {details.get('video_id', 'No video ID available')}
+        Video URL: {youtube_url}
         Tags: {', '.join(details.get('tags', ['No tags available']))}
         Description: 
         {details.get('description', 'No description available')[:1000]}
