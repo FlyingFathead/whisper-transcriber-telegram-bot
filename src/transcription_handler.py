@@ -174,8 +174,8 @@ async def process_url_message(message_text, bot, update):
             await bot.send_message(chat_id=update.effective_chat.id, text="Audio file could not be downloaded.")
             continue
 
-        # Inform user that transcription has started
-        await bot.send_message(chat_id=update.effective_chat.id, text="Transcribing audio...")
+        # Inform user that transcription has started        
+        await bot.send_message(chat_id=update.effective_chat.id, text="Transcribing audio from the video; this may take some time depending on the video's length, please wait...")
         
         # In process_url_message, before calling transcribe_audio:
         settings = get_transcription_settings()
