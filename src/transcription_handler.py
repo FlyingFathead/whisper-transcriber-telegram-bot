@@ -46,8 +46,11 @@ async def download_audio(url, output_path):
 async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header):
     logger.info(f"Starting transcription for: {audio_path}")
 
-    # transcription_command = ["whisper", audio_path, "--output_dir", output_dir]
+    # set the transcription command
     transcription_command = ["whisper", audio_path, "--model", "medium", "--output_dir", output_dir]
+    
+    # old:
+    # transcription_command = ["whisper", audio_path, "--output_dir", output_dir]
     # Alternatively, specify a model if needed: ["whisper", audio_path, "--model", "medium-v3", "--output_dir", output_dir]
 
     process = await asyncio.create_subprocess_exec(
