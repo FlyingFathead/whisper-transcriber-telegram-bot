@@ -1,11 +1,12 @@
 # transcription_handler.py
 # ~~~~~~~
 # openai-whisper transcriber-bot for Telegram
-# v0.02
+# v0.04
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import sys
 import time
 import logging
 import re
@@ -14,9 +15,7 @@ import json
 import os
 import textwrap
 import configparser
-
-# import other stuff
-from utils.bot_token import get_transcription_settings
+from urllib.parse import urlparse, parse_qs
 
 # Toggle this to use the full description or a snippet.
 USE_SNIPPET_FOR_DESCRIPTION = False
@@ -36,6 +35,21 @@ os.makedirs(audio_dir, exist_ok=True)
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
+# asyncio debugging on
+asyncio.get_event_loop().set_debug(True)
+
+# get the general settings
+def get_general_settings():
+    config = configparser.ConfigParser()
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    config_path = os.path.join(base_dir, 'config', 'config.ini')
+    config.read(config_path)
+    allow_all_sites = config.getboolean('GeneralSettings', 'AllowAllSites', fallback=False)
+    return {
+        'allow_all_sites': allow_all_sites
+    }
+
+# get whisper model
 def get_whisper_model():
     config = configparser.ConfigParser()
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -44,17 +58,52 @@ def get_whisper_model():
     model = config.get('WhisperSettings', 'Model', fallback='base')
     return model
 
-async def download_audio(url, output_path):
-    
-    # (old) Construct the full output path within the audio directory
-    # full_output_path = os.path.join(audio_dir, output_path)
+# get transcription settings
+def get_transcription_settings():
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    config_path = os.path.join(base_dir, 'config', 'config.ini')
 
-    # The output_path should already include the 'audio/' prefix from its definition
+    if not os.path.exists(config_path):
+        logger.error("Error: config.ini not found at the expected path.")
+        sys.exit(1)
+
+    config = configparser.ConfigParser()
+    config.read(config_path)
+
+    # Ensure 'TranscriptionSettings' section exists
+    if 'TranscriptionSettings' not in config:
+        logger.error("TranscriptionSettings section missing in config.ini")
+        sys.exit(1)
+
+    include_header = config.getboolean('TranscriptionSettings', 'IncludeHeaderInTranscription', fallback=False)
+    keep_audio_files = config.getboolean('TranscriptionSettings', 'KeepAudioFiles', fallback=False)
+
+    logger.info(f"Transcription settings loaded: include_header={include_header}, keep_audio_files={keep_audio_files}")
+    
+    return {
+        'include_header': include_header,
+        'keep_audio_files': keep_audio_files
+    }
+
+# audio download
+async def download_audio(url, output_path):
+
     logger.info(f"Attempting to download audio from: {url}")
     command = ["yt-dlp", "--extract-audio", "--audio-format", "mp3", url, "-o", output_path]
+
+    # Start the subprocess and capture stdout and stderr
     process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-    await process.communicate()
-    
+
+    # Communicate with the process to retrieve its output and error message
+    stdout, stderr = await process.communicate()
+
+    # Log the stdout and stderr
+    if stdout:
+        logger.info(f"yt-dlp stdout: {stdout.decode().strip()}")
+    if stderr:
+        logger.error(f"yt-dlp stderr: {stderr.decode().strip()}")
+
+    # Check if the file was downloaded successfully
     if os.path.exists(output_path):
         logger.info(f"Audio downloaded successfully: {output_path}")
     else:
@@ -120,129 +169,100 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
 # Process the message's URL and keep the user informed
 async def process_url_message(message_text, bot, update):
 
-    user_id = update.effective_user.id  # Get user ID from the update object
+    try:
 
-    urls = re.findall(r'(https?://\S+)', message_text)
-    for url in urls:
+        # Get general settings right at the beginning of the function
+        settings = get_general_settings()
 
-        logger.info(f"User {user_id} requested a transcript for: {url}")
+        # Get general and transcription settings at the beginning of the function
+        transcription_settings = get_transcription_settings()
 
-        if not re.match(YOUTUBE_REGEX, url):
-            await bot.send_message(chat_id=update.effective_chat.id, text="Skipping non-YouTube URL.")
-            continue
+        include_header = transcription_settings.get('include_header', False)
+        keep_audio_files = transcription_settings.get('keep_audio_files', False)
 
-        # Inform user that URL has been recognized and processing will begin
-        await bot.send_message(chat_id=update.effective_chat.id, text="Processing YouTube URL...")
+        # Get user ID from the update object
+        user_id = update.effective_user.id
 
-        video_id = extract_youtube_video_id(url)
-        youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-        
-        # Fetch YouTube video details and inform the user
-        await bot.send_message(chat_id=update.effective_chat.id, text="Fetching YouTube video details...")
-        details = await fetch_youtube_details(youtube_url)
+        # Parse the url from the message text
+        urls = re.findall(r'(https?://\S+)', message_text)
 
-        if not details:
-            await bot.send_message(chat_id=update.effective_chat.id, text="Failed to fetch video details.")
-            continue
+        for url in urls:
+            # Normalize the YouTube URL to strip off any unnecessary parameters
+            normalized_url = normalize_youtube_url(url)
+            logger.info(f"User {user_id} requested a transcript for normalized URL: {normalized_url}")
 
-        # Header generation // separator
-        header_separator = "=" * 3  # header separator in dashes
+            # Notify the user that the bot is processing the URL
+            await bot.send_message(chat_id=update.effective_chat.id, text="Processing URL...")
 
-        # Creating the video information message
-        video_info_message_placeholder = f"""\
-        {header_separator}
-        Title: {details.get('title', 'No title available')}
-        Duration: {details.get('duration', 'No duration available')}
-        Channel: {details.get('channel', 'No channel information available')}
-        Upload Date: {details.get('upload_date', 'No upload date available')}
-        Views: {details.get('views', 'No views available')}
-        Likes: {details.get('likes', 'No likes available')}
-        Average Rating: {details.get('average_rating', 'No rating available')}
-        Comment Count: {details.get('comment_count', 'No comment count available')}
-        Channel ID: {details.get('channel_id', 'No channel ID available')}
-        Video ID: {details.get('video_id', 'No video ID available')}
-        Video URL: {youtube_url}
-        Tags: {', '.join(details.get('tags', ['No tags available']))}
-        Description: 
-        {details.get('description', 'No description available')[:1000]}
-        {header_separator}
-        """
+            # Define audio file name and path
+            audio_file_name = f"{user_id}_{int(time.time())}.mp3"
+            audio_path = os.path.join(audio_dir, audio_file_name)
 
-        # Dedent the placeholder string
-        video_info_message_dedented = textwrap.dedent(video_info_message_placeholder)
+            # Download the audio from the normalized URL
+            await download_audio(normalized_url, audio_path)
 
-        # Strip leading whitespace from each line individually
-        video_info_message_stripped = "\n".join(line.lstrip() for line in video_info_message_dedented.splitlines())
+            if not os.path.exists(audio_path):
+                # Notify if audio download fails
+                logger.info(f"Audio download failed for URL: {normalized_url}")
+                await bot.send_message(chat_id=update.effective_chat.id, text="Failed to download audio. Please ensure the URL is correct and points to a supported video.")
+                continue
 
-        # Debugging output to ensure it's processed as expected
-        logging.info(f"Debug Video Info Message Stripped: {video_info_message_stripped}")
+            video_info_message = "Transcription initiated."
 
-        video_info_message = video_info_message_stripped
+            # Fetch and process YouTube video details only if it's a YouTube URL
+            # If it's a YouTube URL, fetch additional video details
+            video_info_message = "Transcription initiated."
+            if 'youtube.com' in normalized_url or 'youtu.be' in normalized_url:
+                logger.info("Fetching YouTube video details...")
+                details = await fetch_youtube_details(normalized_url)
+                if details:
+                    # Construct video information message
+                    video_info_message = create_video_info_message(details)
+                    await bot.send_message(chat_id=update.effective_chat.id, text=f"<code>{video_info_message}</code>", parse_mode='HTML')
+                else:
+                    logger.error("Failed to fetch YouTube video details.")
+            
+            # Inform the user that the transcription process has started
+            await bot.send_message(chat_id=update.effective_chat.id, text="Transcribing audio... This may take some time.")
 
-        # Send the video's info as a message to the user
-        # await bot.send_message(chat_id=update.effective_chat.id, text=video_info_message)
+            # Transcribe the audio and handle transcription output
+            transcription_paths = await transcribe_audio(audio_path, output_dir, normalized_url, video_info_message, include_header)
+            if not transcription_paths:
+                # Notify if transcription fails
+                await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")
+                if os.path.exists(audio_path):
+                    os.remove(audio_path)
+                continue
 
-        # Send the video's info as a message to the user in a code block
-        await bot.send_message(
-            chat_id=update.effective_chat.id, 
-            text=f"<code>{video_info_message}</code>", 
-            parse_mode='HTML'
-        )
+            # Send transcription files and finalize the process
+            for fmt, path in transcription_paths.items():
+                await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
+            if not keep_audio_files and os.path.exists(audio_path):
+                os.remove(audio_path)
+            await bot.send_message(chat_id=update.effective_chat.id, text="Transcription complete. Have a nice day!")
+    except Exception as e:
+        logger.error(f"An error occurred: {e}")
+        await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred during processing.")
 
-        # Inform user about the video being processed
-        title = details.get('title', 'No title available')
-        await bot.send_message(chat_id=update.effective_chat.id, text=f"Title: {title}\nDownloading audio for transcription...")
-
-        # Define audio file name and path
-        audio_file_name = f"{video_id}.mp3"
-        audio_path = os.path.join(audio_dir, audio_file_name)
-
-        # Proceed to download and process the audio
-        await download_audio(youtube_url, audio_path)
-
-        if not os.path.exists(audio_path):
-            await bot.send_message(chat_id=update.effective_chat.id, text="Audio file could not be downloaded.")
-            continue
-
-        # Inform user that transcription has started        
-        await bot.send_message(chat_id=update.effective_chat.id, text="Transcribing audio from the video; this may take some time depending on the video's length, please wait...")
-        
-        # In process_url_message, before calling transcribe_audio:
-        settings = get_transcription_settings()
-
-        # Pass settings down to transcribe_audio function:
-        transcription_paths = await transcribe_audio(audio_path, output_dir, youtube_url, video_info_message if settings['include_header'] else None, settings['include_header'])
-
-        if not transcription_paths:
-            await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")
-            os.remove(audio_path)
-            continue
-
-        # Inform user that transcription files are being sent
-
-        logger.info(f"Preparing to send transcription files to user: {user_id}")  
-
-        # Inform user that transcription files are being sent
-        await bot.send_message(chat_id=update.effective_chat.id, text="Sending transcription files...")
-        sent_files = []
-        for fmt, path in transcription_paths.items():
-            await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
-            sent_files.append(path)
-
-        # After sending all files, log which files were sent to which user
-        logger.info(f"Transcription files sent to user {user_id}: {', '.join(sent_files)}")
-
-        # os.remove(audio_path)
-        
-        # Clean up the audio file after sending the files, based on config
-        if not settings['keep_audio_files']:
-            os.remove(audio_path)
-            logger.info(f"Deleted audio file: {audio_path}")
-        else:
-            logger.info(f"Kept audio file: {audio_path}")
-
-        # The closing message        
-        await bot.send_message(chat_id=update.effective_chat.id, text="There ya go, have a nice day! :-)")
+# create video info
+def create_video_info_message(details):
+    header_separator = "=" * 30
+    video_info_message = f"""{header_separator}
+Title: {details.get('title', 'No title available')}
+Duration: {details.get('duration', 'No duration available')}
+Channel: {details.get('channel', 'No channel information available')}
+Upload Date: {details.get('upload_date', 'No upload date available')}
+Views: {details.get('views', 'No views available')}
+Likes: {details.get('likes', 'No likes available')}
+Average Rating: {details.get('average_rating', 'No rating available')}
+Comment Count: {details.get('comment_count', 'No comment count available')}
+Channel ID: {details.get('channel_id', 'No channel ID available')}
+Video ID: {details.get('video_id', 'No video ID available')}
+Video URL: {details.get('video_url', 'No video URL available')}
+Tags: {', '.join(details.get('tags', ['No tags available']))}
+Description: {textwrap.shorten(details.get('description', 'No description available'), 1000, placeholder="...")}
+{header_separator}"""
+    return video_info_message   
 
 # Helper function to format duration from seconds to H:M:S
 def format_duration(duration):
@@ -255,7 +275,7 @@ def format_duration(duration):
     else:
         return f"{minutes}m {seconds}s"
 
-# i.e. for youtube videos
+# Fetch details for YouTube videos
 async def fetch_youtube_details(url, max_retries=3, base_delay=5):
     command = ["yt-dlp", "--user-agent",
                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
@@ -281,19 +301,17 @@ async def fetch_youtube_details(url, max_retries=3, base_delay=5):
         else:
             try:
                 video_details = json.loads(stdout.decode())
-                duration_formatted = format_duration(video_details.get('duration'))                
+                duration_formatted = format_duration(video_details.get('duration', 0))                
 
                 if USE_SNIPPET_FOR_DESCRIPTION:
-                    # Get the snippet if the flag is set to True.
                     description_text = get_description_snippet(video_details.get('description', 'No description available'))
                 else:
-                    # Use the full description if the flag is set to False.
                     description_text = video_details.get('description', 'No description available')
 
+                # Directly use the passed URL for video_url
                 filtered_details = {
                     'title': video_details.get('title', 'No title available'),
-                    # 'duration': video_details.get('duration', 'No duration available'),
-                    'duration': duration_formatted,                    
+                    'duration': duration_formatted,
                     'channel': video_details.get('uploader', 'No channel information available'),
                     'upload_date': video_details.get('upload_date', 'No upload date available'),
                     'views': video_details.get('view_count', 'No views available'),
@@ -304,6 +322,7 @@ async def fetch_youtube_details(url, max_retries=3, base_delay=5):
                     'video_id': video_details.get('id', 'No video ID available'),
                     'tags': video_details.get('tags', ['No tags available']),
                     'description': description_text,
+                    'video_url': url  # Set this directly using the URL passed to the function
                 }
 
                 logger.info(f"Fetched YouTube details successfully for URL: {url}")
@@ -330,3 +349,15 @@ def extract_youtube_video_id(url):
     if not match:
         raise ValueError("Invalid YouTube URL")
     return match.group(6)
+
+def normalize_youtube_url(url):
+    # Parse the URL
+    parsed_url = urlparse(url)
+    # Check if there are any query parameters
+    query_params = parse_qs(parsed_url.query)
+    # If 'v' parameter is in the query, reconstruct the URL without any other parameters
+    video_id = query_params.get('v')
+    if video_id:
+        return f'https://www.youtube.com/watch?v={video_id[0]}'
+    # If there is no 'v' parameter, return the original URL (or handle accordingly)
+    return url

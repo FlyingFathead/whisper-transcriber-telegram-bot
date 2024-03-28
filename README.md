@@ -4,16 +4,17 @@ A Python-based Whisper transcriber bot for Telegram.
 
 ## About
 
-This is a Whisper AI-based transcriber Telegram Bot running on Python, designed to transcribe audio from YouTube videos using OpenAI's Whisper model. Users can send YouTube URLs to the bot, which then processes the audio and returns the transcription in various formats.
+This is a Whisper AI-based transcriber Telegram Bot running on Python, designed to transcribe audio from various media sources supported by `yt-dlp`. While initially focused on YouTube, the bot now supports a broad range of sites listed [here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md), leveraging OpenAI's Whisper model to process audio and return the transcription in multiple formats.
+
 
 ## Features
 
-- Processes YouTube URLs sent by users.
-- Downloads audio from YouTube videos using `yt-dlp`.
-- Uses a local model from the `openai-whisper` package.
-- Transcribes audio using the OpenAI's Whisper's local model.
+- Processes media URLs from a variety of sources supported by `yt-dlp`.
+- Downloads audio using `yt-dlp` from supported sites including but not limited to YouTube.
+- Uses a local model from the `openai-whisper` package for transcription.
+- Transcribes audio using OpenAI's Whisper model.
 - Returns transcription in text, SRT, and VTT formats.
-- Handles concurrent transcription requests gracefully.
+- Handles concurrent transcription requests efficiently.
 
 ## Installation
 
@@ -47,6 +48,7 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
+- v0.04 - expanded support for various media sources via `yt-dlp`, supported sites listed [here](https://github.com/yt-dlp/yt-dlp/blob/)
 - v0.03 - better logging to console, Whisper model + keep audio y/n can now be set in `config.ini`
 - v0.02 - add video information to the transcript text file 
     - (see: `config.ini` => `IncludeHeaderInTranscription = True`)
