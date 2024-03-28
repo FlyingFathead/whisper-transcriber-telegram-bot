@@ -3,12 +3,13 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.06"
+version_number = "0.07"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import signal
 import asyncio
 import logging
 from telegram import Update
@@ -33,24 +34,46 @@ class TranscriberBot:
 
     def __init__(self):
         self.token = get_bot_token()
+        self.task_queue = asyncio.Queue() # queue tasks        
         self.is_processing = asyncio.Lock()  # Lock to ensure one transcription at a time
 
     async def handle_message(self, update: Update, context: CallbackContext) -> None:
         if update.message and update.message.text:
-            # Attempt to acquire the lock
-            if self.is_processing.locked():
-                await update.message.reply_text("Please wait, another transcription is currently being processed.")
-                return
+            await self.task_queue.put((update.message.text, context.bot, update))
+            await update.message.reply_text("Your request has been added to the queue.")
 
-            async with self.is_processing:  # Lock is acquired here
-                await process_url_message(update.message.text, context.bot, update)
-                # Lock is automatically released here
+    async def process_queue(self):
+        while True:
+            message_text, bot, update = await self.task_queue.get()
+            async with self.is_processing:  # Ensure one job at a time
+                await process_url_message(message_text, bot, update)
+            self.task_queue.task_done()
+
+    async def shutdown(signal, loop):
+        """Cleanup tasks tied to the service's shutdown."""
+        print(f"Received exit signal {signal.name}...")
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+
+        [task.cancel() for task in tasks]
+
+        print(f"Cancelling {len(tasks)} outstanding tasks")
+        await asyncio.gather(*tasks, return_exceptions=True)
+        loop.stop()
 
     def run(self):
-        application = Application.builder().token(self.token).build()
+
+        loop = asyncio.get_event_loop()        
+
+        # Using 'sig' as the variable name to avoid conflict with the 'signal' module
+        for sig in [signal.SIGINT, signal.SIGTERM]:
+            loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(self.shutdown(s, loop)))
+
+        self.application = Application.builder().token(self.token).build()
         text_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
-        application.add_handler(text_handler)
-        application.run_polling()
+        self.application.add_handler(text_handler)
+
+        loop.create_task(self.process_queue())
+        self.application.run_polling()
 
 if __name__ == '__main__':
     bot = TranscriberBot()

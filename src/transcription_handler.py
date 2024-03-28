@@ -1,7 +1,7 @@
 # transcription_handler.py
 # ~~~
 # openai-whisper transcriber-bot for Telegram
-# v0.06
+# v0.07
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -17,6 +17,7 @@ import os
 import textwrap
 import configparser
 from urllib.parse import urlparse, parse_qs
+from datetime import datetime, timedelta
 
 # Toggle this to use the full description or a snippet.
 USE_SNIPPET_FOR_DESCRIPTION = False
@@ -90,7 +91,27 @@ def get_transcription_settings():
 async def download_audio(url, output_path):
 
     logger.info(f"Attempting to download audio from: {url}")
-    command = ["yt-dlp", "--extract-audio", "--audio-format", "mp3", url, "-o", output_path]
+    
+    # Specify a cache directory that yt-dlp can write to
+    cache_dir = ".cache"
+
+    # Check if the cache directory exists, create it if it doesn't
+    if not os.path.exists(cache_dir):
+        try:
+            os.makedirs(cache_dir)
+            logger.info(f"Created cache directory: {cache_dir}")
+        except Exception as e:
+            logger.error(f"Failed to create cache directory {cache_dir}: {e}")
+            # Optionally, handle the error (e.g., use a default cache dir or abort the operation)
+
+    command = [
+        "yt-dlp",
+        "--extract-audio",
+        "--audio-format", "mp3",
+        "--cache-dir", cache_dir,  # Specify the custom cache directory
+        url,
+        "-o", output_path
+    ]
 
     # Start the subprocess and capture stdout and stderr
     process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
@@ -232,7 +253,24 @@ async def process_url_message(message_text, bot, update):
             audio_duration = details['audio_duration']
             estimated_time = estimate_transcription_time(model, audio_duration)
             estimated_minutes = estimated_time / 60  # Convert to minutes for user-friendly display
-            await bot.send_message(chat_id=update.effective_chat.id, text=f"Estimated transcription time: {estimated_minutes:.1f} minutes.\n\nTranscribing audio...")
+
+            # Calculate estimated finish time
+            current_time = datetime.now()
+            estimated_finish_time = current_time + timedelta(minutes=estimated_minutes)
+
+            # Format messages for start and estimated finish time
+            time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
+            estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
+
+            # Prepare and send the detailed message
+            detailed_message = (
+                f"Estimated transcription time: {estimated_minutes:.1f} minutes.\n\n"
+                f"Time now:\n{time_now_str}\n\n"
+                f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
+                "Transcribing audio..."
+            )
+
+            await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
             # Transcribe the audio and handle transcription output
             transcription_paths = await transcribe_audio(audio_path, output_dir, normalized_url, video_info_message, include_header)
@@ -269,10 +307,13 @@ Comment Count: {details.get('comment_count', 'No comment count available')}
 Channel ID: {details.get('channel_id', 'No channel ID available')}
 Video ID: {details.get('video_id', 'No video ID available')}
 Video URL: {details.get('video_url', 'No video URL available')}
-Tags: {', '.join(details.get('tags', ['No tags available']))}
-Description: {textwrap.shorten(details.get('description', 'No description available'), 1000, placeholder="...")}
+Tags: {', '.join(details.get('tags', []) if isinstance(details.get('tags'), list) else ['No tags available'])}
+Description: {details.get('description', 'No description available')}
 {header_separator}"""
     return video_info_message   
+
+# alt; shorten at 1000 chars.
+# Description: {textwrap.shorten(details.get('description', 'No description available'), 1000, placeholder="...")}
 
 # Helper function to format duration from seconds to H:M:S
 def format_duration(duration):
@@ -337,9 +378,23 @@ def process_video_details(video_details, url):
     # Extract duration directly and keep it in seconds
     audio_duration = int(video_details.get('duration', 0))
 
-    # Directly assign tags without joining them
-    tags_display = video_details.get('tags', 'No tags available')
-    if not tags_display:  # If tags are empty, set a default message
+    # # Directly assign tags without joining them
+    # tags_display = video_details.get('tags', 'No tags available')
+    # if not tags_display:  # If tags are empty, set a default message
+    #     tags_display = 'No tags available'
+
+    tags = video_details.get('tags', [])
+
+    # Check if tags exist and are in a list format; if not, set a default message
+    # if not tags or not isinstance(tags, list):
+    #     tags_display = 'No tags available'
+    # else:
+    #     tags_display = ', '.join(tags)
+
+    # Check if tags is a list and it's not empty; otherwise, set a default message
+    if isinstance(tags, list) and tags:
+        tags_display = ', '.join(tags)
+    else:
         tags_display = 'No tags available'
 
     return {

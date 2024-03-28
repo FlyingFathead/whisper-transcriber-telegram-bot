@@ -8,6 +8,9 @@ config/bot_token.txt
 __pycache__/
 *.pyc
 
+# yt-dlp cache directory
+.cache/
+
 # transcriptions directory
 transcriptions/
 
