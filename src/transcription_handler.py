@@ -19,6 +19,9 @@ import configparser
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
 
+# tg modules // button selection
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 # Toggle this to use the full description or a snippet.
 USE_SNIPPET_FOR_DESCRIPTION = False
 
@@ -86,6 +89,16 @@ def get_transcription_settings():
         'include_header': include_header,
         'keep_audio_files': keep_audio_files
     }
+
+# (( WIP )) Language option menu
+async def ask_language(bot, chat_id):
+    language_buttons = [
+        InlineKeyboardButton("English", callback_data='en'),
+        InlineKeyboardButton("Finnish", callback_data='fi'),
+        InlineKeyboardButton("Auto-detect", callback_data='auto')
+    ]
+    reply_markup = InlineKeyboardMarkup([language_buttons])
+    await bot.send_message(chat_id, "Please select the language for transcription:", reply_markup=reply_markup)
 
 # audio download
 async def download_audio(url, output_path):
@@ -160,8 +173,8 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
     # Generate the header if needed
     header_content = ""
 
-    # Prepare the full header content
-    ai_transcript_header = "Whisper AI-generated transcript:"
+    # Generate the header if needed, now including the model used
+    ai_transcript_header = f"Whisper AI-generated transcript (model used: {model}):"
     header_content = ""
 
     if include_header:
