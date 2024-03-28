@@ -1,7 +1,10 @@
 # main.py
 # ~~~~~~~
 # openai-whisper transcriber-bot for Telegram
-# v0.04
+
+# version of this program
+version_number = "0.04.1"
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -13,13 +16,21 @@ from telegram.ext import Application, MessageHandler, filters, CallbackContext
 
 # Adjust import paths based on new structure
 from transcription_handler import process_url_message
-from utils.bot_token import get_bot_token  # Updated path
+from utils.bot_token import get_bot_token
+from utils.utils import print_startup_message
 
 # Configure basic logging
 logging.basicConfig(format='[%(asctime)s] %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class YouTubeURLBot:
+# Call the startup message function
+print_startup_message(version_number)
+
+class TranscriberBot:
+
+    # version of this program
+    version_number = version_number
+
     def __init__(self):
         self.token = get_bot_token()
         self.is_processing = asyncio.Lock()  # Lock to ensure one transcription at a time
@@ -42,5 +53,5 @@ class YouTubeURLBot:
         application.run_polling()
 
 if __name__ == '__main__':
-    bot = YouTubeURLBot()
+    bot = TranscriberBot()
     bot.run()

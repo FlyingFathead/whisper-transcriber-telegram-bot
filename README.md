@@ -1,10 +1,10 @@
 # whisper-transcriber-telegram-bot
 
-A Python-based Whisper transcriber bot for Telegram.
+A Python-based Whisper AI transcriber bot for Telegram.
 
 ## About
 
-This is a Whisper AI-based transcriber Telegram Bot running on Python, designed to transcribe audio from various media sources supported by `yt-dlp`. While initially focused on YouTube, the bot now supports a broad range of sites listed [here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md), leveraging OpenAI's Whisper model to process audio and return the transcription in multiple formats.
+This is a Whisper AI-based transcriber Telegram Bot running on Python, designed to transcribe audio from various media sources supported by `yt-dlp`. While initially focused on YouTube, the bot now supports a broad range of sites listed [here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md), leveraging a locally run OpenAI's Whisper model to process audio and return the transcription in multiple formats.
 
 
 ## Features
@@ -12,7 +12,8 @@ This is a Whisper AI-based transcriber Telegram Bot running on Python, designed 
 - Processes media URLs from a variety of sources supported by `yt-dlp`.
 - Downloads audio using `yt-dlp` from supported sites including but not limited to YouTube.
 - Uses a local model from the `openai-whisper` package for transcription.
-- Transcribes audio using OpenAI's Whisper model.
+- Transcribes audio using OpenAI's Whisper model
+   - (see [openai/whisper](https://github.com/openai/whisper/) for more info)
 - Returns transcription in text, SRT, and VTT formats.
 - Handles concurrent transcription requests efficiently.
 
@@ -48,6 +49,7 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
+- v0.04.1 - version number printouts and added utils
 - v0.04 - expanded support for various media sources via `yt-dlp`, supported sites listed [here](https://github.com/yt-dlp/yt-dlp/blob/)
 - v0.03 - better logging to console, Whisper model + keep audio y/n can now be set in `config.ini`
 - v0.02 - add video information to the transcript text file 
