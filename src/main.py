@@ -39,8 +39,12 @@ class TranscriberBot:
 
     async def handle_message(self, update: Update, context: CallbackContext) -> None:
         if update.message and update.message.text:
+            queue_length = self.task_queue.qsize()  # Get the current queue size
             await self.task_queue.put((update.message.text, context.bot, update))
-            await update.message.reply_text("Your request has been added to the queue.")
+            # Inform the user about their position in the queue
+            await update.message.reply_text(
+                f"Your request has been added to the queue. There are {queue_length} jobs ahead of yours."
+            )
 
     async def process_queue(self):
         while True:
