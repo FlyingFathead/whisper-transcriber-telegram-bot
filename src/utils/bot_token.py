@@ -3,6 +3,7 @@
 import os
 import configparser
 import sys
+import logging
 
 def get_bot_token():
     # Correctly ascend two levels to get the project root from bot_token.py in src/utils
@@ -10,9 +11,9 @@ def get_bot_token():
     config_path = os.path.join(base_dir, 'config', 'config.ini')
     token_file_path = os.path.join(base_dir, 'config', 'bot_token.txt')
 
-    print(f"Debug: Base directory is {base_dir}")
-    print(f"Debug: Config path is {config_path}")
-    print(f"Debug: Token file path is {token_file_path}")
+    logging.info(f"Debug: Base directory is {base_dir}")
+    logging.info(f"Debug: Config path is {config_path}")
+    logging.info(f"Debug: Token file path is {token_file_path}")
 
     # Check if the paths actually exist
     if not os.path.exists(config_path):
@@ -44,7 +45,6 @@ def get_bot_token():
     sys.exit(1)
 
 def get_transcription_settings():
-    # Use the same base directory resolution as in get_bot_token
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     config_path = os.path.join(base_dir, 'config', 'config.ini')
 
@@ -55,7 +55,9 @@ def get_transcription_settings():
     config = configparser.ConfigParser()
     config.read(config_path)
     include_header = config.getboolean('TranscriptionSettings', 'IncludeHeaderInTranscription', fallback=False)
+    keep_audio_files = config.getboolean('TranscriptionSettings', 'KeepAudioFiles', fallback=False)
 
     return {
-        'include_header': include_header
+        'include_header': include_header,
+        'keep_audio_files': keep_audio_files
     }

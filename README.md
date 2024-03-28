@@ -47,6 +47,7 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
+- v0.03 - better logging to console, Whisper model + keep audio y/n can now be set in `config.ini`
 - v0.02 - add video information to the transcript text file 
     - (see: `config.ini` => `IncludeHeaderInTranscription = True`)
 - v0.01 - initial commit

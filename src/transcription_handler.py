@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import textwrap
+import configparser
 
 # import other stuff
 from utils.bot_token import get_transcription_settings
@@ -27,11 +28,28 @@ DESCRIPTION_MAX_LINES = 30
 output_dir = "transcriptions"
 os.makedirs(output_dir, exist_ok=True)
 
+# Define and create audio directory
+audio_dir = "audio"
+os.makedirs(audio_dir, exist_ok=True)
+
 # Configure logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
+def get_whisper_model():
+    config = configparser.ConfigParser()
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    config_path = os.path.join(base_dir, 'config', 'config.ini')
+    config.read(config_path)
+    model = config.get('WhisperSettings', 'Model', fallback='base')
+    return model
+
 async def download_audio(url, output_path):
+    
+    # (old) Construct the full output path within the audio directory
+    # full_output_path = os.path.join(audio_dir, output_path)
+
+    # The output_path should already include the 'audio/' prefix from its definition
     logger.info(f"Attempting to download audio from: {url}")
     command = ["yt-dlp", "--extract-audio", "--audio-format", "mp3", url, "-o", output_path]
     process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
@@ -44,14 +62,13 @@ async def download_audio(url, output_path):
 
 # transcription logic with header inclusion based on settings
 async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header):
-    logger.info(f"Starting transcription for: {audio_path}")
 
     # set the transcription command
-    transcription_command = ["whisper", audio_path, "--model", "medium", "--output_dir", output_dir]
-    
-    # old:
-    # transcription_command = ["whisper", audio_path, "--output_dir", output_dir]
-    # Alternatively, specify a model if needed: ["whisper", audio_path, "--model", "medium-v3", "--output_dir", output_dir]
+    model = get_whisper_model()
+
+    logger.info(f"Starting transcription with model '{model}' for: {audio_path}")
+
+    transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir]
 
     process = await asyncio.create_subprocess_exec(
         *transcription_command,
@@ -102,8 +119,14 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
 
 # Process the message's URL and keep the user informed
 async def process_url_message(message_text, bot, update):
+
+    user_id = update.effective_user.id  # Get user ID from the update object
+
     urls = re.findall(r'(https?://\S+)', message_text)
     for url in urls:
+
+        logger.info(f"User {user_id} requested a transcript for: {url}")
+
         if not re.match(YOUTUBE_REGEX, url):
             await bot.send_message(chat_id=update.effective_chat.id, text="Skipping non-YouTube URL.")
             continue
@@ -170,8 +193,11 @@ async def process_url_message(message_text, bot, update):
         title = details.get('title', 'No title available')
         await bot.send_message(chat_id=update.effective_chat.id, text=f"Title: {title}\nDownloading audio for transcription...")
 
-        audio_path = f"{video_id}.mp3"
-        output_dir = "transcriptions"
+        # Define audio file name and path
+        audio_file_name = f"{video_id}.mp3"
+        audio_path = os.path.join(audio_dir, audio_file_name)
+
+        # Proceed to download and process the audio
         await download_audio(youtube_url, audio_path)
 
         if not os.path.exists(audio_path):
@@ -193,13 +219,29 @@ async def process_url_message(message_text, bot, update):
             continue
 
         # Inform user that transcription files are being sent
+
+        logger.info(f"Preparing to send transcription files to user: {user_id}")  
+
+        # Inform user that transcription files are being sent
         await bot.send_message(chat_id=update.effective_chat.id, text="Sending transcription files...")
+        sent_files = []
         for fmt, path in transcription_paths.items():
             await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
-        
-        os.remove(audio_path)  # Clean up the audio file after sending the files
+            sent_files.append(path)
 
-        # The closing message
+        # After sending all files, log which files were sent to which user
+        logger.info(f"Transcription files sent to user {user_id}: {', '.join(sent_files)}")
+
+        # os.remove(audio_path)
+        
+        # Clean up the audio file after sending the files, based on config
+        if not settings['keep_audio_files']:
+            os.remove(audio_path)
+            logger.info(f"Deleted audio file: {audio_path}")
+        else:
+            logger.info(f"Kept audio file: {audio_path}")
+
+        # The closing message        
         await bot.send_message(chat_id=update.effective_chat.id, text="There ya go, have a nice day! :-)")
 
 # Helper function to format duration from seconds to H:M:S

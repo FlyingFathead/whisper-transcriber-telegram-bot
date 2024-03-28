@@ -11,6 +11,9 @@ __pycache__/
 # transcriptions directory
 transcriptions/
 
+# audio files directory
+audio/
+
 # ignore potential transcribed files
 *.mp3
 *.vtt
