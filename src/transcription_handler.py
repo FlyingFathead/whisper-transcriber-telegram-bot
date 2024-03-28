@@ -275,6 +275,12 @@ async def process_url_message(message_text, bot, update):
             time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
             estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
 
+            # Detailed message for logging with user_id and requested URL
+            log_message = (
+                f"User ID: {user_id}\n"
+                f"Requested URL for transcription: {normalized_url}\n"
+            )
+
             # Prepare and send the detailed message
             detailed_message = (
                 f"Whisper model in use: {model}\n\n"                
@@ -283,6 +289,10 @@ async def process_url_message(message_text, bot, update):
                 f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
                 "Transcribing audio..."
             )
+
+            # Concatenate and log the messages for internal records
+            logger.info(f"{log_message}")
+            logger.info(f"{detailed_message}")
 
             await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
@@ -300,6 +310,10 @@ async def process_url_message(message_text, bot, update):
                 await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
             if not keep_audio_files and os.path.exists(audio_path):
                 os.remove(audio_path)
+            
+            # Log the completion message with user ID and video URL
+            completion_log_message = f"Translation complete for user {user_id}, video: {normalized_url}"
+            logging.info(completion_log_message)
             await bot.send_message(chat_id=update.effective_chat.id, text="Transcription complete. Have a nice day!")
 
     except Exception as e:
