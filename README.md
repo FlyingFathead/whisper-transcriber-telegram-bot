@@ -49,6 +49,8 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
+- v0.06 - better handling of details for all video sources, transcription time estimates
+- v0.05 - universal video description parsing (platform-agnostic)
 - v0.04.1 - version number printouts and added utils
 - v0.04 - expanded support for various media sources via `yt-dlp`, supported sites listed [here](https://github.com/yt-dlp/yt-dlp/blob/)
 - v0.03 - better logging to console, Whisper model + keep audio y/n can now be set in `config.ini`

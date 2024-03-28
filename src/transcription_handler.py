@@ -1,7 +1,7 @@
 # transcription_handler.py
-# ~~~~~~~
+# ~~~
 # openai-whisper transcriber-bot for Telegram
-# v0.04.1
+# v0.06
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -11,6 +11,7 @@ import time
 import logging
 import re
 import asyncio
+from asyncio.exceptions import TimeoutError
 import json
 import os
 import textwrap
@@ -198,6 +199,23 @@ async def process_url_message(message_text, bot, update):
             audio_file_name = f"{user_id}_{int(time.time())}.mp3"
             audio_path = os.path.join(audio_dir, audio_file_name)
 
+            video_info_message = "Transcription initiated."
+
+            # Fetch video details
+            logger.info("Fetching video details...")
+            details = await fetch_video_details(normalized_url)
+            if details:
+                # Construct video information message
+                # Pass the normalized URL directly into the video info creation
+                details['video_url'] = normalized_url                
+                video_info_message = create_video_info_message(details)
+                await bot.send_message(chat_id=update.effective_chat.id, text=f"<code>{video_info_message}</code>", parse_mode='HTML')
+            else:
+                logger.error("Failed to fetch video details.")
+
+            # Inform the user that the transcription process has started
+            await bot.send_message(chat_id=update.effective_chat.id, text="Fetching the audio track...")
+
             # Download the audio from the normalized URL
             await download_audio(normalized_url, audio_path)
 
@@ -206,24 +224,15 @@ async def process_url_message(message_text, bot, update):
                 logger.info(f"Audio download failed for URL: {normalized_url}")
                 await bot.send_message(chat_id=update.effective_chat.id, text="Failed to download audio. Please ensure the URL is correct and points to a supported video.")
                 continue
-
-            video_info_message = "Transcription initiated."
-
-            # Fetch and process YouTube video details only if it's a YouTube URL
-            # If it's a YouTube URL, fetch additional video details
-            video_info_message = "Transcription initiated."
-            if 'youtube.com' in normalized_url or 'youtu.be' in normalized_url:
-                logger.info("Fetching YouTube video details...")
-                details = await fetch_youtube_details(normalized_url)
-                if details:
-                    # Construct video information message
-                    video_info_message = create_video_info_message(details)
-                    await bot.send_message(chat_id=update.effective_chat.id, text=f"<code>{video_info_message}</code>", parse_mode='HTML')
-                else:
-                    logger.error("Failed to fetch YouTube video details.")
             
-            # Inform the user that the transcription process has started
-            await bot.send_message(chat_id=update.effective_chat.id, text="Transcribing audio... This may take some time.")
+            # Inform the user that the transcription process has started and do a time estimate
+            model = get_whisper_model()
+
+            # Use the audio duration from the video details
+            audio_duration = details['audio_duration']
+            estimated_time = estimate_transcription_time(model, audio_duration)
+            estimated_minutes = estimated_time / 60  # Convert to minutes for user-friendly display
+            await bot.send_message(chat_id=update.effective_chat.id, text=f"Estimated transcription time: {estimated_minutes:.1f} minutes.\n\nTranscribing audio...")
 
             # Transcribe the audio and handle transcription output
             transcription_paths = await transcribe_audio(audio_path, output_dir, normalized_url, video_info_message, include_header)
@@ -240,13 +249,14 @@ async def process_url_message(message_text, bot, update):
             if not keep_audio_files and os.path.exists(audio_path):
                 os.remove(audio_path)
             await bot.send_message(chat_id=update.effective_chat.id, text="Transcription complete. Have a nice day!")
+
     except Exception as e:
         logger.error(f"An error occurred: {e}")
         await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred during processing.")
 
 # create video info
 def create_video_info_message(details):
-    header_separator = "=" * 30
+    header_separator = "=" * 10
     video_info_message = f"""{header_separator}
 Title: {details.get('title', 'No title available')}
 Duration: {details.get('duration', 'No duration available')}
@@ -275,62 +285,79 @@ def format_duration(duration):
     else:
         return f"{minutes}m {seconds}s"
 
-# Fetch details for YouTube videos
-async def fetch_youtube_details(url, max_retries=3, base_delay=5):
+# Fetch details for videos
+async def fetch_video_details(url, max_retries=3, base_delay=5, command_timeout=30):
     command = ["yt-dlp", "--user-agent",
                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
                "--dump-json", url]
 
     for attempt in range(max_retries):
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
 
-        stdout, stderr = await process.communicate()
-
-        if stderr and process.returncode != 0:
-            logger.warning(f"Attempt {attempt + 1} failed: {stderr.decode()}")
-            if attempt < max_retries - 1:
-                wait_time = base_delay * (2 ** attempt)  # Exponential backoff
-                logger.info(f"Retrying after {wait_time} seconds...")
-                await asyncio.sleep(wait_time)
-            else:
-                logger.error("All retry attempts failed.")
-        else:
             try:
-                video_details = json.loads(stdout.decode())
-                duration_formatted = format_duration(video_details.get('duration', 0))                
+                # Set a timeout for the command execution
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=command_timeout)
+            except TimeoutError:
+                logger.error(f"yt-dlp command timed out after {command_timeout} seconds")
+                process.kill()
+                await process.wait()
+                stdout, stderr = None, b"Command timed out"
 
-                if USE_SNIPPET_FOR_DESCRIPTION:
-                    description_text = get_description_snippet(video_details.get('description', 'No description available'))
+            if stderr and process.returncode != 0:
+                logger.warning(f"Attempt {attempt + 1} failed: {stderr.decode()}")
+                if attempt < max_retries - 1:
+                    wait_time = base_delay * (2 ** attempt)
+                    logger.info(f"Retrying after {wait_time} seconds...")
+                    await asyncio.sleep(wait_time)
                 else:
-                    description_text = video_details.get('description', 'No description available')
+                    logger.error("All retry attempts failed.")
+                    return None
+            else:
+                try:
+                    video_details = json.loads(stdout.decode()) if stdout else {}
+                    return process_video_details(video_details, url)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error decoding JSON from yt-dlp output: {e}")
+                    return None
+        except Exception as e:
+            logger.error(f"An unexpected error occurred: {e}")
+            return None
 
-                # Directly use the passed URL for video_url
-                filtered_details = {
-                    'title': video_details.get('title', 'No title available'),
-                    'duration': duration_formatted,
-                    'channel': video_details.get('uploader', 'No channel information available'),
-                    'upload_date': video_details.get('upload_date', 'No upload date available'),
-                    'views': video_details.get('view_count', 'No views available'),
-                    'likes': video_details.get('like_count', 'No likes available'),
-                    'average_rating': video_details.get('average_rating', 'No rating available'),
-                    'comment_count': video_details.get('comment_count', 'No comment count available'),
-                    'channel_id': video_details.get('channel_id', 'No channel ID available'),
-                    'video_id': video_details.get('id', 'No video ID available'),
-                    'tags': video_details.get('tags', ['No tags available']),
-                    'description': description_text,
-                    'video_url': url  # Set this directly using the URL passed to the function
-                }
+# process the video details for included information
+def process_video_details(video_details, url):
+    description_text = video_details.get('description', '')
+    if USE_SNIPPET_FOR_DESCRIPTION and description_text:
+        description_text = get_description_snippet(description_text)
 
-                logger.info(f"Fetched YouTube details successfully for URL: {url}")
-                return filtered_details
-            except json.JSONDecodeError as e:
-                logger.error(f"Error decoding JSON from yt-dlp output: {e}")
-                return None
-    return None
+    # Extract duration directly and keep it in seconds
+    audio_duration = int(video_details.get('duration', 0))
+
+    # Directly assign tags without joining them
+    tags_display = video_details.get('tags', 'No tags available')
+    if not tags_display:  # If tags are empty, set a default message
+        tags_display = 'No tags available'
+
+    return {
+        'title': video_details.get('title', 'No title available'),
+        'duration': format_duration(video_details.get('duration', 0)),
+        'channel': video_details.get('uploader', 'No channel information available'),
+        'upload_date': video_details.get('upload_date', 'No upload date available'),
+        'views': video_details.get('view_count', 'No views available'),
+        'likes': video_details.get('like_count', 'No likes available'),
+        'average_rating': str(video_details.get('average_rating', 'No rating available')),
+        'comment_count': str(video_details.get('comment_count', 'No comment count available')),
+        'channel_id': video_details.get('channel_id', 'No channel ID available'),
+        'video_id': video_details.get('id', 'No video ID available'),
+        'video_url': video_details.get('webpage_url', url),
+        'tags': tags_display,
+        'description': description_text,
+        'audio_duration': int(video_details.get('duration', 0))      
+    }
 
 # Helper function to get up to n lines from the description
 def get_description_snippet(description, max_lines=DESCRIPTION_MAX_LINES):
@@ -361,3 +388,31 @@ def normalize_youtube_url(url):
         return f'https://www.youtube.com/watch?v={video_id[0]}'
     # If there is no 'v' parameter, return the original URL (or handle accordingly)
     return url
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# estimate transcription times
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Define a dictionary to map models to their relative speeds
+model_speeds = {
+    'tiny': 32,
+    'base': 16,
+    'small': 6,
+    'medium': 2,
+    'large': 1
+}
+
+def estimate_transcription_time(model, audio_duration):
+    """
+    Estimate the transcription time based on the model size and audio duration.
+
+    :param model: The model size used for transcription.
+    :param audio_duration: The duration of the audio in seconds.
+    :return: Estimated time in seconds to transcribe the audio.
+    """
+    # Assume 'large' model takes its duration equal to the audio's duration to transcribe.
+    # Scale other models based on their relative speed.
+    baseline_time = audio_duration  # This is for the 'large' model as a baseline
+    relative_speed = model_speeds.get(model, 1)  # Default to 1 if model not found
+    estimated_time = baseline_time / relative_speed
+    return estimated_time
