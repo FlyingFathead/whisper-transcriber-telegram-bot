@@ -72,9 +72,13 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
     # Generate the header if needed
     header_content = ""
 
-    # Use video_info_message directly if include_header is True
+    # Prepare the full header content
+    ai_transcript_header = "Whisper AI-generated transcript:"
+    header_content = ""
+
     if include_header:
-        header_content = f"\n{video_info_message}\n\n"
+        # Combine the video info message with the AI-generated transcript notice
+        header_content = f"{video_info_message}\n\n{ai_transcript_header}\n\n"
 
     # Verify and log the generated files, adding header to .txt file
     base_filename = os.path.splitext(os.path.basename(audio_path))[0]
