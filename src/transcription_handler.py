@@ -19,6 +19,9 @@ import configparser
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
 
+# internal modules
+from utils.language_selection import ask_language
+
 # tg modules // button selection
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -89,16 +92,6 @@ def get_transcription_settings():
         'include_header': include_header,
         'keep_audio_files': keep_audio_files
     }
-
-# (( WIP )) Language option menu
-async def ask_language(bot, chat_id):
-    language_buttons = [
-        InlineKeyboardButton("English", callback_data='en'),
-        InlineKeyboardButton("Finnish", callback_data='fi'),
-        InlineKeyboardButton("Auto-detect", callback_data='auto')
-    ]
-    reply_markup = InlineKeyboardMarkup([language_buttons])
-    await bot.send_message(chat_id, "Please select the language for transcription:", reply_markup=reply_markup)
 
 # audio download
 async def download_audio(url, output_path):
@@ -406,18 +399,7 @@ def process_video_details(video_details, url):
     # Extract duration directly and keep it in seconds
     audio_duration = int(video_details.get('duration', 0))
 
-    # # Directly assign tags without joining them
-    # tags_display = video_details.get('tags', 'No tags available')
-    # if not tags_display:  # If tags are empty, set a default message
-    #     tags_display = 'No tags available'
-
     tags = video_details.get('tags', [])
-
-    # Check if tags exist and are in a list format; if not, set a default message
-    # if not tags or not isinstance(tags, list):
-    #     tags_display = 'No tags available'
-    # else:
-    #     tags_display = ', '.join(tags)
 
     # Check if tags is a list and it's not empty; otherwise, set a default message
     if isinstance(tags, list) and tags:

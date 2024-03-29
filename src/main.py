@@ -19,6 +19,7 @@ from telegram.ext import Application, MessageHandler, filters, CallbackContext
 # Adjust import paths based on new structure
 from transcription_handler import process_url_message
 from utils.bot_token import get_bot_token
+from utils.language_selection import ask_language
 from utils.utils import print_startup_message
 
 # Configure basic logging
