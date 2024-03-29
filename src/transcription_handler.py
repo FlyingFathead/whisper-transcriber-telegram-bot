@@ -276,8 +276,8 @@ async def process_url_message(message_text, bot, update):
 
             # Prepare and send the detailed message
             detailed_message = (
-                f"Whisper model in use: {model}\n\n"                
-                f"Estimated transcription time: {estimated_minutes:.1f} minutes.\n\n"
+                f"Whisper model in use:\n{model}\n\n"                
+                f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
                 f"Time now:\n{time_now_str}\n\n"
                 f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
                 "Transcribing audio..."
