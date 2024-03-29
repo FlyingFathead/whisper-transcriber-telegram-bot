@@ -49,7 +49,8 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
-- v0.07.1 - job queue
+- v0.07.2 - job queues fine-tuned to be more informative
+- v0.07.1 - job queues introduced
 - v0.07 - transcript queuing, more precise transcript time estimates
 - v0.06 - better handling of details for all video sources, transcription time estimates
 - v0.05 - universal video description parsing (platform-agnostic)

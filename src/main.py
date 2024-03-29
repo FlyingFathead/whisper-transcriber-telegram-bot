@@ -3,12 +3,13 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.07.1"
+version_number = "0.07.2"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import re
 import signal
 import asyncio
 import logging
@@ -38,13 +39,33 @@ class TranscriberBot:
         self.is_processing = asyncio.Lock()  # Lock to ensure one transcription at a time
 
     async def handle_message(self, update: Update, context: CallbackContext) -> None:
+        logger.info("Received a message.")
         if update.message and update.message.text:
-            queue_length = self.task_queue.qsize()  # Get the current queue size
-            await self.task_queue.put((update.message.text, context.bot, update))
-            # Inform the user about their position in the queue
-            await update.message.reply_text(
-                f"Your request has been added to the queue. There are {queue_length} jobs ahead of yours."
-            )
+            urls = re.findall(r'(https?://\S+)', update.message.text)
+
+            if urls:
+                await self.task_queue.put((update.message.text, context.bot, update))
+                # Immediately capture the queue length after adding a job.
+                queue_length = self.task_queue.qsize()
+
+                logger.info(f"Task added to the queue. Current queue size: {queue_length}")
+
+                # Adjust messaging logic based on queue size and processing status.
+                # If the queue length is 1 and no task is currently processing, then the job is next.
+                # Otherwise, if the queue has more items or a task is processing, provide accurate positioning.
+                if queue_length == 1 and not self.is_processing.locked():
+                    await update.message.reply_text(
+                        "Your request has been added to the queue and will be processed next."
+                    )
+                else:
+                    # Informs user accurately about their position in the queue.
+                    await update.message.reply_text(
+                        f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
+                    )
+            else:
+                await update.message.reply_text(
+                    "No valid URL detected in your message. Please send a message that includes a valid URL."
+                )
 
     async def process_queue(self):
         while True:
