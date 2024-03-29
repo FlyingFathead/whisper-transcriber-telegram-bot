@@ -13,6 +13,7 @@ import re
 import signal
 import asyncio
 import logging
+
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, CallbackContext
 
@@ -29,6 +30,9 @@ logger = logging.getLogger(__name__)
 # Call the startup message function
 print_startup_message(version_number)
 
+# Initialize the lock outside of your function to ensure it's shared across all invocations.
+queue_lock = asyncio.Lock()
+
 class TranscriberBot:
 
     # version of this program
@@ -39,6 +43,7 @@ class TranscriberBot:
         self.task_queue = asyncio.Queue() # queue tasks        
         self.is_processing = asyncio.Lock()  # Lock to ensure one transcription at a time
 
+
     async def handle_message(self, update: Update, context: CallbackContext) -> None:
         logger.info("Received a message.")
         if update.message and update.message.text:
@@ -46,22 +51,21 @@ class TranscriberBot:
 
             if urls:
                 await self.task_queue.put((update.message.text, context.bot, update))
-                # Immediately capture the queue length after adding a job.
                 queue_length = self.task_queue.qsize()
 
                 logger.info(f"Task added to the queue. Current queue size: {queue_length}")
 
-                # Adjust messaging logic based on queue size and processing status.
-                # If the queue length is 1 and no task is currently processing, then the job is next.
-                # Otherwise, if the queue has more items or a task is processing, provide accurate positioning.
+                # Check if this is the only job and nothing is currently processing.
                 if queue_length == 1 and not self.is_processing.locked():
                     await update.message.reply_text(
-                        "Your request has been added to the queue and will be processed next."
+                        "Your request is next and is currently being processed."
                     )
                 else:
-                    # Informs user accurately about their position in the queue.
+                    # When there are other jobs or a job is currently being processed.
+                    # Adjust the count to start from 1 if the queue is not empty.
+                    jobs_ahead = queue_length
                     await update.message.reply_text(
-                        f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
+                        f"Your request has been added to the queue. There are {jobs_ahead} jobs ahead of yours."
                     )
             else:
                 await update.message.reply_text(
