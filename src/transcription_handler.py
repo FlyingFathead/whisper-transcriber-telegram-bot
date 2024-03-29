@@ -93,6 +93,10 @@ def get_transcription_settings():
         'keep_audio_files': keep_audio_files
     }
 
+# split long messages
+def split_message(message, max_length=4096):
+    return [message[i:i+max_length] for i in range(0, len(message), max_length)]
+
 # audio download
 async def download_audio(url, output_path):
 
@@ -215,8 +219,10 @@ async def process_url_message(message_text, bot, update):
         urls = re.findall(r'(https?://\S+)', message_text)
 
         for url in urls:
+
             # Normalize the YouTube URL to strip off any unnecessary parameters
             normalized_url = normalize_youtube_url(url)
+            
             logger.info(f"User {user_id} requested a transcript for normalized URL: {normalized_url}")
 
             # Notify the user that the bot is processing the URL
@@ -235,8 +241,11 @@ async def process_url_message(message_text, bot, update):
                 # Construct video information message
                 # Pass the normalized URL directly into the video info creation
                 details['video_url'] = normalized_url                
+                # video_info_message = create_video_info_message(details)
+                # await bot.send_message(chat_id=update.effective_chat.id, text=f"<code>{video_info_message}</code>", parse_mode='HTML')
                 video_info_message = create_video_info_message(details)
-                await bot.send_message(chat_id=update.effective_chat.id, text=f"<code>{video_info_message}</code>", parse_mode='HTML')
+                for part in split_message(video_info_message):
+                    await bot.send_message(chat_id=update.effective_chat.id, text=f"<code>{part}</code>", parse_mode='HTML')
             else:
                 logger.error("Failed to fetch video details.")
 
@@ -314,7 +323,7 @@ async def process_url_message(message_text, bot, update):
         await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred during processing.")
 
 # create video info
-def create_video_info_message(details):
+def create_video_info_message(details, max_length=4000):
     header_separator = "=" * 10
     video_info_message = f"""{header_separator}
 Title: {details.get('title', 'No title available')}
@@ -443,16 +452,21 @@ def extract_youtube_video_id(url):
     return match.group(6)
 
 def normalize_youtube_url(url):
-    # Parse the URL
     parsed_url = urlparse(url)
-    # Check if there are any query parameters
-    query_params = parse_qs(parsed_url.query)
-    # If 'v' parameter is in the query, reconstruct the URL without any other parameters
-    video_id = query_params.get('v')
+    if 'youtu.be' in parsed_url.netloc:
+        # Extracts video ID from the path for youtu.be short URLs.
+        video_id = parsed_url.path.split('/')[1]
+    else:
+        # Extracts video ID from query parameters for regular YouTube URLs.
+        query_params = parse_qs(parsed_url.query)
+        video_id = query_params.get('v', [None])[0]
+    
     if video_id:
-        return f'https://www.youtube.com/watch?v={video_id[0]}'
-    # If there is no 'v' parameter, return the original URL (or handle accordingly)
-    return url
+        return f'https://www.youtube.com/watch?v={video_id}'
+    else:
+        # Log or handle the unsupported URL format.
+        logger.error(f"Unsupported YouTube URL format: {url}")
+        return None
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # estimate transcription times
