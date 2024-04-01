@@ -1,7 +1,7 @@
 # transcription_handler.py
 # ~~~
 # openai-whisper transcriber-bot for Telegram
-# v0.07.5
+# v0.07.6
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -56,6 +56,14 @@ def get_general_settings():
     return {
         'allow_all_sites': allow_all_sites
     }
+
+# get the logging settings
+def get_logging_settings():
+    config = configparser.ConfigParser()
+    config_path = os.path.join(base_dir, 'config', 'config.ini')
+    config.read(config_path)
+    update_interval = config.getint('LoggingSettings', 'UpdateIntervalSeconds', fallback=10)
+    return update_interval
 
 # get whisper model
 def get_whisper_model():
@@ -130,7 +138,8 @@ async def download_audio(url, output_path):
     # Initialize an empty buffer and set the initial time marker
     output_buffer = ''
     last_log_time = time.time()
-    log_interval = 10  # seconds
+    # log_interval = 10  # seconds
+    log_interval = get_logging_settings()  # Replace the hardcoded value
 
     while True:
         chunk = await process.stdout.read(1)

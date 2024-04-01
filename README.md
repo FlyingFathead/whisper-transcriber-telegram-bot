@@ -49,6 +49,7 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
+- v0.07.6 - update interval for logging `yt-dlp` downloads now configurable from `config.ini`
 - v0.07.5 - 10-second interval update for `yt-dlp` logging
 - v0.07.4 - fixes for non-youtube urls
 - v0.07.2 - job queues fine-tuned to be more informative
