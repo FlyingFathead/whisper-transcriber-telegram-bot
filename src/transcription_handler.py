@@ -1,7 +1,7 @@
 # transcription_handler.py
 # ~~~
 # openai-whisper transcriber-bot for Telegram
-# v0.07.4
+# v0.07.5
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -117,25 +117,46 @@ async def download_audio(url, output_path):
     command = [
         "yt-dlp",
         "--extract-audio",
+        # "--quiet",  # Add quiet flags to suppress output
         "--audio-format", "mp3",
         "--cache-dir", cache_dir,  # Specify the custom cache directory
         url,
         "-o", output_path
     ]
 
-    # Start the subprocess and capture stdout and stderr
+    # Start the subprocess
     process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
-    # Communicate with the process to retrieve its output and error message
-    stdout, stderr = await process.communicate()
+    # Initialize an empty buffer and set the initial time marker
+    output_buffer = ''
+    last_log_time = time.time()
+    log_interval = 10  # seconds
 
-    # Log the stdout and stderr
-    if stdout:
-        logger.info(f"yt-dlp stdout: {stdout.decode().strip()}")
+    while True:
+        chunk = await process.stdout.read(1)
+        if not chunk:  # Break if no more output
+            break
+
+        output_buffer += chunk.decode()
+
+        # Log at regular time intervals, regardless of the content
+        current_time = time.time()
+        if current_time - last_log_time >= log_interval:
+            if output_buffer.strip():
+                logger.info(output_buffer.strip())
+                output_buffer = ''  # Reset the buffer
+                last_log_time = current_time
+
+    # After the loop, ensure to log any remaining output
+    if output_buffer.strip():
+        logger.info(output_buffer.strip())
+
+    # Check for any error output
+    stderr = await process.stderr.read()
     if stderr:
         logger.error(f"yt-dlp stderr: {stderr.decode().strip()}")
 
-    # Check if the file was downloaded successfully
+    # Verify the download success
     if os.path.exists(output_path):
         logger.info(f"Audio downloaded successfully: {output_path}")
     else:
