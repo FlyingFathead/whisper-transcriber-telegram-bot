@@ -46,10 +46,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 # asyncio debugging on
 asyncio.get_event_loop().set_debug(True)
 
+# set the config base dir just once at the top of your script
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # get the general settings
 def get_general_settings():
-    config = configparser.ConfigParser()
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    config = configparser.ConfigParser()    
     config_path = os.path.join(base_dir, 'config', 'config.ini')
     config.read(config_path)
     allow_all_sites = config.getboolean('GeneralSettings', 'AllowAllSites', fallback=False)
@@ -68,7 +70,6 @@ def get_logging_settings():
 # get whisper model
 def get_whisper_model():
     config = configparser.ConfigParser()
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     config_path = os.path.join(base_dir, 'config', 'config.ini')
     config.read(config_path)
     model = config.get('WhisperSettings', 'Model', fallback='base')
@@ -76,17 +77,15 @@ def get_whisper_model():
 
 # get transcription settings
 def get_transcription_settings():
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    config = configparser.ConfigParser()
     config_path = os.path.join(base_dir, 'config', 'config.ini')
 
     if not os.path.exists(config_path):
         logger.error("Error: config.ini not found at the expected path.")
         sys.exit(1)
 
-    config = configparser.ConfigParser()
     config.read(config_path)
 
-    # Ensure 'TranscriptionSettings' section exists
     if 'TranscriptionSettings' not in config:
         logger.error("TranscriptionSettings section missing in config.ini")
         sys.exit(1)
