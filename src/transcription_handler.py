@@ -1,7 +1,7 @@
 # transcription_handler.py
 # ~~~
 # openai-whisper transcriber-bot for Telegram
-# v0.07.6
+# v0.07.7
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -170,6 +170,23 @@ async def download_audio(url, output_path):
     else:
         logger.error(f"Failed to download audio: {output_path}")
 
+# Read from stream line by line until EOF, call callback on each line.
+async def read_stream(stream, callback):
+    while True:
+        line = await stream.readline()
+        if line:
+            callback(line.decode())
+        else:
+            break
+
+# Log each line from the stdout.
+def log_stdout(line):
+    logger.info(f"Whisper stdout: {line.strip()}")
+
+# Log each line from the stderr.
+def log_stderr(line):
+    logger.error(f"Whisper stderr: {line.strip()}")
+
 # transcription logic with header inclusion based on settings
 async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header):
 
@@ -180,18 +197,24 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
 
     transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir]
 
+    # Start the subprocess and get stdout, stderr streams
     process = await asyncio.create_subprocess_exec(
         *transcription_command,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
 
-    stdout, stderr = await process.communicate()
+    # Concurrently log stdout and stderr
+    await asyncio.gather(
+        read_stream(process.stdout, log_stdout),
+        read_stream(process.stderr, log_stderr)
+    )
 
-    # Check if Whisper process encountered an error
+    # Wait for the subprocess to finish
+    await process.wait()
+
     if process.returncode != 0:
         logger.error(f"Whisper process failed with return code {process.returncode}")
-        logger.error(f"Whisper STDERR: {stderr.decode()}")
         return {}
 
     logger.info(f"Whisper transcription completed for: {audio_path}")
