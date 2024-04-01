@@ -1,7 +1,7 @@
 # transcription_handler.py
 # ~~~
 # openai-whisper transcriber-bot for Telegram
-# v0.07.2
+# v0.07.4
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -221,7 +221,21 @@ async def process_url_message(message_text, bot, update):
         for url in urls:
 
             # Normalize the YouTube URL to strip off any unnecessary parameters
-            normalized_url = normalize_youtube_url(url)
+            # normalized_url = normalize_youtube_url(url)
+
+            # Check if the URL is from YouTube; if not, handle accordingly.
+            if "youtube" not in url and "youtu.be" not in url:
+                logger.info(f"Processing a non-YouTube URL: {url}")
+                # Directly assign the URL without normalization
+                normalized_url = url
+            else:
+                # Normalize YouTube URL
+                normalized_url = normalize_youtube_url(url) if "youtube" in url or "youtu.be" in url else url
+            
+            if not normalized_url:
+                # Inform the user and skip this URL
+                await bot.send_message(chat_id=update.effective_chat.id, text="Unsupported URL format. Currently, only YouTube URLs are fully supported.")
+                continue
             
             logger.info(f"User {user_id} requested a transcript for normalized URL: {normalized_url}")
 

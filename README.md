@@ -49,6 +49,7 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
+- v0.07.4 - fixes for non-youtube url's
 - v0.07.2 - job queues fine-tuned to be more informative
 - v0.07.1 - job queues introduced
 - v0.07 - transcript queuing, more precise transcript time estimates
