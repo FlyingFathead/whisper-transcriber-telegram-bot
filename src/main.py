@@ -155,7 +155,7 @@ The original author is not responsible for how this bot is utilized. All code an
         if new_model in self.valid_models:
             set_user_model(user_id, new_model)  # Update user-specific model
             self.model_change_limits[user_id] = current_time  # Update cooldown tracker
-            await update.message.reply_text(f"Model updated to: <code>{new_model}</code>", parse_mode='HTML')
+            await update.message.reply_text(f"Model set to: <code>{new_model}</code>", parse_mode='HTML')
         else:
             await update.message.reply_text(
                 f"Invalid model specified.\n\n"
