@@ -254,7 +254,7 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
 async def process_url_message(message_text, bot, update):
 
     try:
-        
+
         model = get_whisper_model()  # Ensure the latest model is fetched dynamically
 
         # Get general settings right at the beginning of the function
@@ -367,7 +367,12 @@ async def process_url_message(message_text, bot, update):
             await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
             # Transcribe the audio and handle transcription output
-            transcription_paths = await transcribe_audio(audio_path, output_dir, normalized_url, video_info_message, include_header)
+            model = get_whisper_model()  # Ensure you fetch the current model setting
+            if not model:
+                logger.error("Failed to retrieve the transcription model.")
+                return
+            transcription_paths = await transcribe_audio(audio_path, output_dir, normalized_url, video_info_message, include_header, model)
+
             if not transcription_paths:
                 # Notify if transcription fails
                 await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")

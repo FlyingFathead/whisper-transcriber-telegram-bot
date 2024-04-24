@@ -53,6 +53,7 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
+- v0.11 - bugfixes & rate limits for `/model` command changes for users
 - v0.10 - `/help` & `/about` commands added for further assistance
    - `config.ini` now has a list of supported models that can be changed as needed
 - v0.09 - users can now change the model Whisper model with `/model` command

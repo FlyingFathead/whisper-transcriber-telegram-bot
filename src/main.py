@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.10"
+version_number = "0.11"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -53,6 +53,10 @@ class TranscriberBot:
         self.config.read('config/config.ini')
         self.model = self.config.get('WhisperSettings', 'Model', fallback='medium.en')
         self.valid_models = self.config.get('ModelSettings', 'ValidModels', fallback='tiny, base, small, medium, large').split(', ')
+
+        self.model_change_limits = {}  # Dictionary to track user rate limits
+        self.model_change_cooldown = 60  # Cooldown period in seconds
+        self.user_models = {} # Use a dictionary to manage models per user.
 
     async def handle_message(self, update: Update, context: CallbackContext) -> None:
         logger.info("Received a message.")
@@ -114,20 +118,27 @@ The original author is not responsible for how this bot is utilized. All code an
         await update.message.reply_text(help_text)
 
     async def model_command(self, update: Update, context: CallbackContext) -> None:
-        # If no specific model is specified, just report the current model
+        user_id = update.effective_user.id
+        current_time = time.time()
+        
         if not context.args:
             await update.message.reply_text(f"The current transcription model is set to: {self.model}")
+            return
+
+        # Cooldown check
+        if user_id in self.model_change_limits and current_time - self.model_change_limits[user_id] < self.model_change_cooldown:
+            cooldown_remaining = self.model_change_cooldown - (current_time - self.model_change_limits[user_id])
+            await update.message.reply_text(f"Please wait {cooldown_remaining:.0f} more seconds before changing the model again. Current model is '{self.model}'.")
+            return
+
+        new_model = context.args[0]
+        if new_model in self.valid_models:
+            self.model = new_model
+            self.model_change_limits[user_id] = current_time  # Record the change time
+            await update.message.reply_text(f"Model updated to: {new_model}")
         else:
-            new_model = context.args[0].strip()
-            if new_model in self.valid_models:
-                self.model = new_model
-                self.config.set('WhisperSettings', 'Model', new_model)
-                with open('config/config.ini', 'w') as configfile:
-                    self.config.write(configfile)
-                await update.message.reply_text(f"Model updated to {new_model}.")
-            else:
-                models_list = ', '.join(self.valid_models)
-                await update.message.reply_text(f"Invalid model specified. Available models: {models_list}.")
+            models_list = ', '.join(self.valid_models)
+            await update.message.reply_text(f"Invalid model specified.\n\nAvailable models: {models_list}")
 
     def run(self):
         loop = asyncio.get_event_loop()
