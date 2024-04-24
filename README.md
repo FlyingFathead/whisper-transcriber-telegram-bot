@@ -49,6 +49,11 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
+- v0.10 - `/help` & `/about` commands added for further assistance
+   - `config.ini` now has a list of supported models that can be changed as needed
+- v0.09 - users can now change the model Whisper model with `/model` command
+- v0.08 - auto-retry TG connection on start-up connection failure
+   - can be set in `config.ini` with `RestartOnConnectionFailure`
 - v0.07.7 - log output from `whisper` to logging
 - v0.07.6 - update interval for logging `yt-dlp` downloads now configurable from `config.ini`
 - v0.07.5 - 10-second interval update for `yt-dlp` logging

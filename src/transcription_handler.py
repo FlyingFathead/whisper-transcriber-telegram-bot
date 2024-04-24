@@ -188,7 +188,7 @@ def log_stderr(line):
     logger.error(f"Whisper stderr: {line.strip()}")
 
 # transcription logic with header inclusion based on settings
-async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header):
+async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header, model):
 
     # set the transcription command
     model = get_whisper_model()
@@ -254,6 +254,8 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
 async def process_url_message(message_text, bot, update):
 
     try:
+        
+        model = get_whisper_model()  # Ensure the latest model is fetched dynamically
 
         # Get general settings right at the beginning of the function
         settings = get_general_settings()
