@@ -53,6 +53,8 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
+- v0.12 - async handling & user model change fixes, improved error handling
+- v0.11.1 - bot logic + layout changes, model list with `/model` (also in `config.ini`)
 - v0.11 - bugfixes & rate limits for `/model` command changes for users
 - v0.10 - `/help` & `/about` commands added for further assistance
    - `config.ini` now has a list of supported models that can be changed as needed

@@ -1,7 +1,7 @@
 # transcription_handler.py
 # ~~~
 # openai-whisper transcriber-bot for Telegram
-# v0.07.7
+# v0.12
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -10,6 +10,7 @@ import sys
 import time
 import logging
 import re
+import threading
 import asyncio
 from asyncio.exceptions import TimeoutError
 import json
@@ -49,6 +50,12 @@ asyncio.get_event_loop().set_debug(True)
 # set the config base dir just once at the top of your script
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Define a dictionary at the module level to store user-specific models
+user_models = {}
+
+# lock the user models
+user_models_lock = threading.Lock()
+
 # get the general settings
 def get_general_settings():
     config = configparser.ConfigParser()    
@@ -68,12 +75,31 @@ def get_logging_settings():
     return update_interval
 
 # get whisper model
-def get_whisper_model():
-    config = configparser.ConfigParser()
-    config_path = os.path.join(base_dir, 'config', 'config.ini')
-    config.read(config_path)
-    model = config.get('WhisperSettings', 'Model', fallback='base')
-    return model
+def get_whisper_model(user_id=None):
+    with user_models_lock:  # Acquire the lock before accessing user_models
+        logger.debug(f"Attempting to fetch model for user_id: {user_id}")
+        global user_models
+        if user_id is None or user_id not in user_models:
+            config = configparser.ConfigParser()
+            config_path = os.path.join(base_dir, 'config', 'config.ini')
+            config.read(config_path)
+            default_model = config.get('WhisperSettings', 'Model', fallback='medium.en')
+            logger.info(f"No custom model for user {user_id}. Using default model: {default_model}")
+            return default_model
+        else:
+            custom_model = user_models[user_id]
+            logger.info(f"Returning custom model for user {user_id}: {custom_model}")
+            return custom_model
+
+# Modify the set_user_model function to use the lock
+def set_user_model(user_id, model):
+    with user_models_lock:  # Acquire the lock before modifying user_models
+        global user_models
+        if user_id and model:
+            user_models[user_id] = model
+            logger.info(f"Model set for user {user_id}: {model}")
+        else:
+            logger.error(f"Failed to set model for user {user_id}: {model}")
 
 # get transcription settings
 def get_transcription_settings():
@@ -190,9 +216,6 @@ def log_stderr(line):
 # transcription logic with header inclusion based on settings
 async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header, model):
 
-    # set the transcription command
-    model = get_whisper_model()
-
     logger.info(f"Starting transcription with model '{model}' for: {audio_path}")
 
     transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir]
@@ -251,11 +274,9 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
     return created_files
 
 # Process the message's URL and keep the user informed
-async def process_url_message(message_text, bot, update):
+async def process_url_message(message_text, bot, update, model):
 
     try:
-
-        model = get_whisper_model()  # Ensure the latest model is fetched dynamically
 
         # Get general settings right at the beginning of the function
         settings = get_general_settings()
@@ -330,7 +351,7 @@ async def process_url_message(message_text, bot, update):
                 continue
             
             # Inform the user that the transcription process has started and do a time estimate
-            model = get_whisper_model()
+            model = get_whisper_model(user_id)
 
             # Use the audio duration from the video details
             audio_duration = details['audio_duration']
@@ -367,7 +388,7 @@ async def process_url_message(message_text, bot, update):
             await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
             # Transcribe the audio and handle transcription output
-            model = get_whisper_model()  # Ensure you fetch the current model setting
+            model = get_whisper_model(user_id)  # Ensure you fetch the current model setting
             if not model:
                 logger.error("Failed to retrieve the transcription model.")
                 return
@@ -387,7 +408,7 @@ async def process_url_message(message_text, bot, update):
                 os.remove(audio_path)
             
             # Log the completion message with user ID and video URL
-            completion_log_message = f"Translation complete for user {user_id}, video: {normalized_url}"
+            completion_log_message = f"Translation complete for user {user_id}, video: {normalized_url}, model: {model}"
             logging.info(completion_log_message)
             await bot.send_message(chat_id=update.effective_chat.id, text="Transcription complete. Have a nice day!")
 

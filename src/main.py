@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.11"
+version_number = "0.12"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -21,7 +21,7 @@ from telegram.ext import Application, MessageHandler, filters, CallbackContext
 from telegram.ext import CommandHandler
 
 # Adjust import paths based on new structure
-from transcription_handler import process_url_message
+from transcription_handler import process_url_message, set_user_model, get_whisper_model
 from utils.bot_token import get_bot_token
 from utils.utils import print_startup_message
 
@@ -42,6 +42,9 @@ class TranscriberBot:
     # version of this program
     version_number = version_number
 
+    # Class-level attribute for global locking
+    processing_lock = asyncio.Lock() 
+
     def __init__(self):
         self.token = get_bot_token()
         self.task_queue = asyncio.Queue()  # queue tasks
@@ -55,11 +58,23 @@ class TranscriberBot:
         self.valid_models = self.config.get('ModelSettings', 'ValidModels', fallback='tiny, base, small, medium, large').split(', ')
 
         self.model_change_limits = {}  # Dictionary to track user rate limits
-        self.model_change_cooldown = 60  # Cooldown period in seconds
+        self.model_change_cooldown = 20  # Cooldown period in seconds
         self.user_models = {} # Use a dictionary to manage models per user.
+        self.user_models_lock = asyncio.Lock()  # Lock for handling user_models dictionary
 
     async def handle_message(self, update: Update, context: CallbackContext) -> None:
-        logger.info("Received a message.")
+
+        user_id = update.effective_user.id  # Update the user_id
+        message_text = update.message.text  # Get the text of the message received
+
+        # Log the received message along with the user ID
+        logger.info(f"Received a message from user ID {user_id}: {message_text}")
+        
+        # Check and log the model before starting transcription
+        current_model = get_whisper_model(user_id)
+
+        logger.debug(f"Current model for user {user_id} before transcription: {current_model}")
+
         if update.message and update.message.text:
             urls = re.findall(r'(https?://\S+)', update.message.text)
 
@@ -78,8 +93,10 @@ class TranscriberBot:
     async def process_queue(self):
         while True:
             message_text, bot, update = await self.task_queue.get()
-            async with self.is_processing:  # Ensure one job at a time
-                await process_url_message(message_text, bot, update)
+            async with TranscriberBot.processing_lock:  # Use the class-level lock
+                user_id = update.effective_user.id
+                model = get_whisper_model(user_id)
+                await process_url_message(message_text, bot, update, model)
             self.task_queue.task_done()
 
     async def shutdown(self, signal, loop):
@@ -95,50 +112,55 @@ class TranscriberBot:
 
     async def help_command(self, update: Update, context: CallbackContext) -> None:
         models_list = ', '.join(self.valid_models)  # Dynamically generate the list of valid models
-        help_text = f"""Welcome to the Whisper Transcriber Bot!
+        help_text = f"""<b>Welcome to the Whisper Transcriber Bot!</b>
 
-Version number: {self.version_number}
+<b>Version:</b> {self.version_number}
 
-How to Use:
+<b>How to Use:</b>
 - Send any supported media URL to have its audio transcribed.
-- Use /model to change the transcription model (currently set to '{self.model}').
+- Use /model to change the transcription model.
 - Use /help or /about to display this help message.
 
-Available Models:
+<b>Whisper model currently in use:</b>
+<code>{self.model}</code>
+
+<b>Available Whisper models:</b>
 {models_list}
 
-Code by FlyingFathead.
+<b>Bot code by FlyingFathead.</b>
+Source code on <a href='https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/'>GitHub</a>.
 
-Source Code:
-https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
-
-Disclaimer:
+<b>Disclaimer:</b>
 The original author is not responsible for how this bot is utilized. All code and outputs are provided 'AS IS' without warranty of any kind. Users assume full responsibility for the operation and output of the bot. Use at your own risk.
 """
-        await update.message.reply_text(help_text)
+        await update.message.reply_text(help_text, parse_mode='HTML')
 
     async def model_command(self, update: Update, context: CallbackContext) -> None:
         user_id = update.effective_user.id
         current_time = time.time()
+        models_list = ', '.join(self.valid_models)  # Dynamically generate the list of valid models
         
         if not context.args:
-            await update.message.reply_text(f"The current transcription model is set to: {self.model}")
-            return
-
-        # Cooldown check
-        if user_id in self.model_change_limits and current_time - self.model_change_limits[user_id] < self.model_change_cooldown:
-            cooldown_remaining = self.model_change_cooldown - (current_time - self.model_change_limits[user_id])
-            await update.message.reply_text(f"Please wait {cooldown_remaining:.0f} more seconds before changing the model again. Current model is '{self.model}'.")
+            current_model = get_whisper_model(user_id)
+            await update.message.reply_text(
+                f"<b>Current model:</b>\n<code>{current_model}</code>\n\n"
+                f"<b>Available models:</b>\n{models_list}\n\n"
+                "To change the model, use commands like:\n"
+                "<code>/model medium.en</code>\n"
+                "<code>/model large-v3</code>",
+                parse_mode='HTML')
             return
 
         new_model = context.args[0]
         if new_model in self.valid_models:
-            self.model = new_model
-            self.model_change_limits[user_id] = current_time  # Record the change time
-            await update.message.reply_text(f"Model updated to: {new_model}")
+            set_user_model(user_id, new_model)  # Update user-specific model
+            self.model_change_limits[user_id] = current_time  # Update cooldown tracker
+            await update.message.reply_text(f"Model updated to: <code>{new_model}</code>", parse_mode='HTML')
         else:
-            models_list = ', '.join(self.valid_models)
-            await update.message.reply_text(f"Invalid model specified.\n\nAvailable models: {models_list}")
+            await update.message.reply_text(
+                f"Invalid model specified.\n\n"
+                f"Available models:\n{models_list}",
+                parse_mode='HTML')
 
     def run(self):
         loop = asyncio.get_event_loop()
