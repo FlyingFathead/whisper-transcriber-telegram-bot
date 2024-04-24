@@ -131,7 +131,7 @@ class TranscriberBot:
 Source code on <a href='https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/'>GitHub</a>.
 
 <b>Disclaimer:</b>
-The original author is not responsible for how this bot is utilized. All code and outputs are provided 'AS IS' without warranty of any kind. Users assume full responsibility for the operation and output of the bot. Use at your own risk.
+The original author is NOT responsible for how this bot is utilized. All code and outputs are provided 'AS IS' without warranty of any kind. Users assume full responsibility for the operation and output of the bot. This applies to both legal and ethical responsibilities. Use at your own risk.
 """
         await update.message.reply_text(help_text, parse_mode='HTML')
 
