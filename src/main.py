@@ -156,7 +156,9 @@ The original author is NOT responsible for how this bot is utilized. All code an
                 "- <b>Large</b>: Most precise, processes at real-time (1x speed), uses ~10GB VRAM.\n\n"
                 "Note: '.en' models (e.g., 'tiny.en') are optimized for English and offer better accuracy for English audio. "
                 "As model size increases, the benefit of English optimization becomes less significant. Choose based on your "
-                "needs for speed, memory usage, and linguistic accuracy.",
+                "needs for speed, memory usage, and linguistic accuracy. "
+                "As a general guideline, larger models are more accurate but also slower. "
+                "I.e. best balance in speed vs. accuracy in English language is likely <code>medium.en</code>.",
                 parse_mode='HTML')
             return
 
