@@ -47,6 +47,10 @@ After launching the bot, you can interact with it via Telegram:
 2. The bot will acknowledge the request and begin processing.
 3. Once processing is complete, the bot will send the transcription files to you.
 
+### Commands:
+- `/help` and `/about` - get help on bot use, list version number, available models and commands, etc.
+- `/model` - view the model in use or change to another available model.
+
 ## Changes
 
 - v0.10 - `/help` & `/about` commands added for further assistance
