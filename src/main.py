@@ -147,7 +147,16 @@ The original author is NOT responsible for how this bot is utilized. All code an
                 f"<b>Available models:</b>\n{models_list}\n\n"
                 "To change the model, use commands like:\n"
                 "<code>/model medium.en</code>\n"
-                "<code>/model large-v3</code>",
+                "<code>/model large-v3</code>\n\n"
+                "<b>Model Details:</b>\n"
+                "- <b>Tiny</b>: Fastest, uses ~1GB VRAM, about 32x faster than large.\n"
+                "- <b>Base</b>: Faster, uses ~1GB VRAM, about 16x faster than large.\n"
+                "- <b>Small</b>: Balanced, uses ~2GB VRAM, about 6x faster than large.\n"
+                "- <b>Medium</b>: More precise, uses ~5GB VRAM, about 2x faster than large.\n"
+                "- <b>Large</b>: Most precise, processes at real-time (1x speed), uses ~10GB VRAM.\n\n"
+                "Note: '.en' models (e.g., 'tiny.en') are optimized for English and offer better accuracy for English audio. "
+                "As model size increases, the benefit of English optimization becomes less significant. Choose based on your "
+                "needs for speed, memory usage, and linguistic accuracy.",
                 parse_mode='HTML')
             return
 
