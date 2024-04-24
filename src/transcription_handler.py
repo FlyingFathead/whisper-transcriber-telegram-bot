@@ -569,10 +569,17 @@ def normalize_youtube_url(url):
 # Define a dictionary to map models to their relative speeds
 model_speeds = {
     'tiny': 32,
+    'tiny.en': 32,
     'base': 16,
+    'base.en': 16,
     'small': 6,
+    'small.en': 6,
     'medium': 2,
-    'large': 1
+    'medium.en': 2,
+    'large': 1,
+    'large-v1': 1,
+    'large-v2': 1,
+    'large-v3': 1
 }
 
 def estimate_transcription_time(model, audio_duration):
