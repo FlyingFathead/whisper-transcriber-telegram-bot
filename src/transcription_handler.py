@@ -6,6 +6,7 @@
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import GPUtil 
 import sys
 import time
 import logging
@@ -214,11 +215,15 @@ def log_stderr(line):
     logger.error(f"Whisper stderr: {line.strip()}")
 
 # transcription logic with header inclusion based on settings
-async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header, model):
+# (always tries to use the gpu that's available with most free VRAM)
+async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header, model, device):
+    log_gpu_utilization()  # Log GPU utilization before starting transcription
+
+    logger.info(f"Using device: {device} for transcription")
 
     logger.info(f"Starting transcription with model '{model}' for: {audio_path}")
 
-    transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir]
+    transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir, "--device", device]
 
     # Start the subprocess and get stdout, stderr streams
     process = await asyncio.create_subprocess_exec(
@@ -274,10 +279,9 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
     return created_files
 
 # Process the message's URL and keep the user informed
+# (Added in the new GPU logging function call to the process_url_message function)
 async def process_url_message(message_text, bot, update, model):
-
     try:
-
         # Get general settings right at the beginning of the function
         settings = get_general_settings()
 
@@ -294,7 +298,6 @@ async def process_url_message(message_text, bot, update, model):
         urls = re.findall(r'(https?://\S+)', message_text)
 
         for url in urls:
-
             # Normalize the YouTube URL to strip off any unnecessary parameters
             # normalized_url = normalize_youtube_url(url)
 
@@ -387,12 +390,25 @@ async def process_url_message(message_text, bot, update, model):
 
             await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
+            # Get the best GPU for transcription
+            best_gpu = get_best_gpu()
+            if best_gpu:
+                device = f'cuda:{best_gpu.id}'
+                gpu_message = (
+                    f"Using GPU {best_gpu.id}: {best_gpu.name}\n"
+                    f"Free Memory: {best_gpu.memoryFree} MB\n"
+                    f"Load: {best_gpu.load * 100:.1f}%"
+                )
+            else:
+                device = 'cpu'
+                gpu_message = "No GPU available, using CPU for transcription."
+
+            # Log and send the GPU information to the user
+            logger.info(gpu_message)
+            await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
+
             # Transcribe the audio and handle transcription output
-            model = get_whisper_model(user_id)  # Ensure you fetch the current model setting
-            if not model:
-                logger.error("Failed to retrieve the transcription model.")
-                return
-            transcription_paths = await transcribe_audio(audio_path, output_dir, normalized_url, video_info_message, include_header, model)
+            transcription_paths = await transcribe_audio(audio_path, output_dir, normalized_url, video_info_message, include_header, model, device)
 
             if not transcription_paths:
                 # Notify if transcription fails
@@ -596,3 +612,23 @@ def estimate_transcription_time(model, audio_duration):
     relative_speed = model_speeds.get(model, 1)  # Default to 1 if model not found
     estimated_time = baseline_time / relative_speed
     return estimated_time
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# get the best GPU availability
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Function to get GPU utilization and select the GPU with the most free memory
+def get_best_gpu():
+    gpus = GPUtil.getGPUs()
+    if not gpus:
+        logger.error("No GPUs found")
+        return 'cpu'
+    
+    best_gpu = max(gpus, key=lambda gpu: gpu.memoryFree)
+    return best_gpu if best_gpu.memoryFree > 0 else None
+
+# Add a new function to log GPU utilization details
+def log_gpu_utilization():
+    gpus = GPUtil.getGPUs()
+    for gpu in gpus:
+        logger.info(f"GPU {gpu.id}: {gpu.name}, Load: {gpu.load * 100:.1f}%, Free Memory: {gpu.memoryFree} MB, Used Memory: {gpu.memoryUsed} MB, Total Memory: {gpu.memoryTotal} MB")

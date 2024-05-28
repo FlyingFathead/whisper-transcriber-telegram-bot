@@ -1,21 +1,21 @@
 # whisper-transcriber-telegram-bot
 
-A Python-based Whisper AI transcriber bot for Telegram.
+A Python-based local (GPU/CPU) instance Whisper AI transcriber bot for Telegram.
 
 ## About
 
 This is a Whisper AI-based transcriber Telegram Bot running on Python, designed to transcribe audio from various media sources supported by `yt-dlp`. While initially focused on YouTube, the bot now supports a broad range of sites listed [here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md), leveraging a locally run OpenAI's Whisper model to process audio and return the transcription in multiple formats.
-
 
 ## Features
 
 - Processes media URLs from a variety of sources supported by `yt-dlp`.
 - Downloads audio using `yt-dlp` from supported sites including but not limited to YouTube.
 - Uses a local model from the `openai-whisper` package for transcription.
+- Automatically uses `GPUtil` to map out the best available CUDA-enabled GPU.
 - Transcribes audio using OpenAI's Whisper model
    - (see [openai/whisper](https://github.com/openai/whisper/) for more info)
 - Returns transcription in text, SRT, and VTT formats.
-- Handles concurrent transcription requests efficiently.
+- Handles concurrent transcription requests efficiently with async & task queuing.
 
 ## Installation
 
@@ -53,6 +53,7 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
+- v0.13 - added `GPUtil` GPU mapping to figure out the best available CUDA GPU instance to use (most free VRAM)
 - v0.12 - async handling & user model change fixes, improved error handling
 - v0.11.1 - bot logic + layout changes, model list with `/model` (also in `config.ini`)
 - v0.11 - bugfixes & rate limits for `/model` command changes for users
