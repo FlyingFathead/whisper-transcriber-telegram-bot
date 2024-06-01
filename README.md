@@ -48,7 +48,7 @@ To set up the Whisper Transcriber Telegram Bot, follow these steps:
 
 After launching the bot, you can interact with it via Telegram:
 
-1. Send a video URL or audio file (WAV/MP3) to the bot.
+1. Send a video URL, voice message or audio file (in WAV/MP3 format) to the bot.
 2. The bot will acknowledge the request and begin processing.
 3. Once processing is complete, the bot will send the transcription files to you.
 
