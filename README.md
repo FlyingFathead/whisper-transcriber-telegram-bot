@@ -58,6 +58,7 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
+- v0.14.1 - small fixes to the file handler; more detailed exception catching
 - v0.14 - now handles both Telegram's audio messages as well as audio files (.wav, .mp3)
 - v0.13 - added `GPUtil` GPU mapping to figure out the best available CUDA GPU instance to use
    - (by default, uses a CUDA-enabled GPU on the system with the most free VRAM available)

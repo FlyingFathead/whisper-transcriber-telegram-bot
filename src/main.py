@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.14"
+version_number = "0.14.1"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -110,7 +110,6 @@ class TranscriberBot:
     #             await process_url_message(message_text, bot, update, model)
     #         self.task_queue.task_done()
 
-
     async def process_queue(self):
         while True:
             task, bot, update = await self.task_queue.get()
@@ -125,6 +124,7 @@ class TranscriberBot:
                     await process_url_message(task, bot, update, model)
                 elif task.endswith('.wav') or task.endswith('.mp3'):
                     logger.info(f"Processing audio file: {task}")
+
                     # Notify the user about the model and GPU
                     await bot.send_message(chat_id=update.effective_chat.id, text=f"Starting transcription with model: {model}")
                     best_gpu = get_best_gpu()
@@ -172,7 +172,7 @@ class TranscriberBot:
                     logger.info(detailed_message)
                     await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
-                    # Transcribe the audio
+                    # Now start the transcription process
                     transcription_paths = await transcribe_audio(task, self.output_dir, "", "", self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'), model, device)
                     if not transcription_paths:
                         # Notify if transcription fails
@@ -183,7 +183,12 @@ class TranscriberBot:
 
                     # Send transcription files and finalize the process
                     for fmt, path in transcription_paths.items():
-                        await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
+                        try:
+                            await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
+                            logger.info(f"Sent {fmt} file to user {user_id}: {path}")
+                        except Exception as e:
+                            logger.error(f"Failed to send {fmt} file to user {user_id}: {path}, error: {e}")
+
                     if not self.config.getboolean('TranscriptionSettings', 'keepaudiofiles'):
                         os.remove(task)
                     
