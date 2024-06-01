@@ -6,7 +6,7 @@ Runs on Python 3.10+.
 
 ## About
 
-This is a Whisper AI-based transcriber Telegram Bot running on Python, designed to transcribe audio from various media sources supported by `yt-dlp`, or via Telegram's audio messages and over audio file uploads (mp3, wav). 
+This program is a Whisper AI-based transcriber Telegram Bot running on Python (v3.10+), designed to transcribe audio from various media sources supported by `yt-dlp`, or via Telegram's audio messages and over audio file uploads (mp3, wav). 
 
 The bot supports a broad range of media sites via `yt-dlp` ([listed here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)), leveraging a locally run OpenAI's Whisper model to process audio and return the transcription in multiple formats.
 
