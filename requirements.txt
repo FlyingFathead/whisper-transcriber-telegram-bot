@@ -2,3 +2,5 @@ python-telegram-bot
 yt-dlp
 openai-whisper
 gputil
+ffmpeg-python
+pydub

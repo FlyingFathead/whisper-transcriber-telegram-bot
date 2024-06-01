@@ -4,18 +4,22 @@ A Python-based local (GPU/CPU) instance Whisper AI transcriber bot for Telegram.
 
 ## About
 
-This is a Whisper AI-based transcriber Telegram Bot running on Python, designed to transcribe audio from various media sources supported by `yt-dlp`. While initially focused on YouTube, the bot now supports a broad range of sites listed [here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md), leveraging a locally run OpenAI's Whisper model to process audio and return the transcription in multiple formats.
+This is a Whisper AI-based transcriber Telegram Bot running on Python, designed to transcribe audio from various media sources supported by `yt-dlp`, or via Telegram's audio messages and over audio file uploads (mp3, wav). 
+
+The bot supports a broad range of media sites via `yt-dlp` ([listed here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)), leveraging a locally run OpenAI's Whisper model to process audio and return the transcription in multiple formats.
 
 ## Features
 
-- Processes media URLs from a variety of sources supported by `yt-dlp`.
-- Downloads audio using `yt-dlp` from supported sites including but not limited to YouTube.
-- Uses a local model from the `openai-whisper` package for transcription.
-- Automatically uses `GPUtil` to map out the best available CUDA-enabled GPU.
-- Transcribes audio using OpenAI's Whisper model
+- 🎥 Processes media URLs from a variety of sources supported by `yt-dlp`.
+- 🎵 Downloads audio using `yt-dlp` from supported sites.
+- 📲 Can also receive Telegram audio messages as well as .mp3 and .wav files for transcription.
+- 🤖 Uses a local model from the `openai-whisper` package for transcription.
+- 🖥️ Automatically uses `GPUtil` to map out the best available CUDA-enabled GPU.
+- 📝 Transcribes audio using OpenAI's Whisper model.
    - (see [openai/whisper](https://github.com/openai/whisper/) for more info)
-- Returns transcription in text, SRT, and VTT formats.
-- Handles concurrent transcription requests efficiently with async & task queuing.
+- 📄 Returns transcription in text, SRT, and VTT formats.
+- 🔄 Handles concurrent transcription requests efficiently with async & task queuing.
+- 🕒 Features an automatic queue system to manage multiple transcription requests seamlessly.
 
 ## Installation
 
@@ -43,7 +47,7 @@ To set up the Whisper Transcriber Telegram Bot, follow these steps:
 
 After launching the bot, you can interact with it via Telegram:
 
-1. Send a YouTube video URL to the bot.
+1. Send a video URL or audio file (WAV/MP3) to the bot.
 2. The bot will acknowledge the request and begin processing.
 3. Once processing is complete, the bot will send the transcription files to you.
 
@@ -53,6 +57,7 @@ After launching the bot, you can interact with it via Telegram:
 
 ## Changes
 
+- v0.14 - now handles both Telegram's audio messages as well as audio files (.wav, .mp3)
 - v0.13 - added `GPUtil` GPU mapping to figure out the best available CUDA GPU instance to use
    - (by default, uses a CUDA-enabled GPU on the system with the most free VRAM available)
 - v0.12 - async handling & user model change fixes, improved error handling

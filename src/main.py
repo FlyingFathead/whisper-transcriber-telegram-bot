@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.13"
+version_number = "0.14"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -15,13 +15,17 @@ import signal
 import asyncio
 import logging
 import configparser
+import os
+import subprocess
+import datetime
+from datetime import datetime, timedelta
 
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, CallbackContext
 from telegram.ext import CommandHandler
 
 # Adjust import paths based on new structure
-from transcription_handler import process_url_message, set_user_model, get_whisper_model
+from transcription_handler import process_url_message, set_user_model, get_whisper_model, transcribe_audio, get_best_gpu, get_audio_duration, estimate_transcription_time
 from utils.bot_token import get_bot_token
 from utils.utils import print_startup_message
 
@@ -33,6 +37,10 @@ logger = logging.getLogger(__name__)
 config = configparser.ConfigParser()
 config.read('config/config.ini')
 restart_on_failure = config.getboolean('GeneralSettings', 'RestartOnConnectionFailure', fallback=True)
+
+# Define directories for storing audio messages and files
+audio_messages_dir = "audio_messages"
+os.makedirs(audio_messages_dir, exist_ok=True)
 
 # Initialize the lock outside of your function to ensure it's shared across all invocations.
 queue_lock = asyncio.Lock()
@@ -62,8 +70,11 @@ class TranscriberBot:
         self.user_models = {} # Use a dictionary to manage models per user.
         self.user_models_lock = asyncio.Lock()  # Lock for handling user_models dictionary
 
-    async def handle_message(self, update: Update, context: CallbackContext) -> None:
+        # Define output directory for transcriptions
+        self.output_dir = "transcriptions"
+        os.makedirs(self.output_dir, exist_ok=True)
 
+    async def handle_message(self, update: Update, context: CallbackContext) -> None:
         user_id = update.effective_user.id  # Update the user_id
         message_text = update.message.text  # Get the text of the message received
 
@@ -90,15 +101,98 @@ class TranscriberBot:
             else:
                 await update.message.reply_text("No valid URL detected in your message. Please send a message that includes a valid URL. If you need help, type: /help")
 
+    # async def process_queue(self):
+    #     while True:
+    #         message_text, bot, update = await self.task_queue.get()
+    #         async with TranscriberBot.processing_lock:  # Use the class-level lock
+    #             user_id = update.effective_user.id
+    #             model = get_whisper_model(user_id)
+    #             await process_url_message(message_text, bot, update, model)
+    #         self.task_queue.task_done()
+
+
     async def process_queue(self):
         while True:
-            message_text, bot, update = await self.task_queue.get()
-            async with TranscriberBot.processing_lock:  # Use the class-level lock
-                user_id = update.effective_user.id
-                model = get_whisper_model(user_id)
-                await process_url_message(message_text, bot, update, model)
-            self.task_queue.task_done()
+            task, bot, update = await self.task_queue.get()
+            user_id = update.effective_user.id
+            logger.info(f"Processing task for user ID {user_id}: {task}")
 
+            async with TranscriberBot.processing_lock:  # Use the class-level lock
+                model = get_whisper_model(user_id)
+
+                if isinstance(task, str) and task.startswith('http'):
+                    logger.info(f"Processing URL: {task}")
+                    await process_url_message(task, bot, update, model)
+                elif task.endswith('.wav') or task.endswith('.mp3'):
+                    logger.info(f"Processing audio file: {task}")
+                    # Notify the user about the model and GPU
+                    await bot.send_message(chat_id=update.effective_chat.id, text=f"Starting transcription with model: {model}")
+                    best_gpu = get_best_gpu()
+                    if best_gpu:
+                        device = f'cuda:{best_gpu.id}'
+                        gpu_message = (
+                            f"Using GPU {best_gpu.id}: {best_gpu.name}\n"
+                            f"Free Memory: {best_gpu.memoryFree} MB\n"
+                            f"Load: {best_gpu.load * 100:.1f}%"
+                        )
+                    else:
+                        device = 'cpu'
+                        gpu_message = "No GPU available, using CPU for transcription."
+                    
+                    # Log and send the GPU information to the user
+                    logger.info(gpu_message)
+                    await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
+
+                    # Inform the user about the estimated time for transcription
+                    audio_duration = get_audio_duration(task)
+                    if audio_duration is None:
+                        await bot.send_message(chat_id=update.effective_chat.id, text="Invalid audio file. Please upload or link to a valid audio file.")
+                        if os.path.exists(task):
+                            os.remove(task)
+                        continue
+
+                    estimated_time = estimate_transcription_time(model, audio_duration)
+                    estimated_minutes = estimated_time / 60  # Convert to minutes for user-friendly display
+
+                    # Calculate estimated finish time
+                    current_time = datetime.now()
+                    estimated_finish_time = current_time + timedelta(minutes=estimated_minutes)
+
+                    # Format messages for start and estimated finish time
+                    time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
+                    estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
+
+                    detailed_message = (
+                        f"Whisper model in use:\n{model}\n\n"                
+                        f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
+                        f"Time now:\n{time_now_str}\n\n"
+                        f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
+                        "Transcribing audio..."
+                    )
+                    logger.info(detailed_message)
+                    await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
+
+                    # Transcribe the audio
+                    transcription_paths = await transcribe_audio(task, self.output_dir, "", "", self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'), model, device)
+                    if not transcription_paths:
+                        # Notify if transcription fails
+                        await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")
+                        if os.path.exists(task):
+                            os.remove(task)
+                        continue
+
+                    # Send transcription files and finalize the process
+                    for fmt, path in transcription_paths.items():
+                        await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
+                    if not self.config.getboolean('TranscriptionSettings', 'keepaudiofiles'):
+                        os.remove(task)
+                    
+                    # Send the "Have a nice day!" message
+                    await bot.send_message(chat_id=update.effective_chat.id, text="Transcription complete. Have a nice day!")
+                self.task_queue.task_done()
+            logger.info(f"Task completed for user ID {user_id}: {task}")
+
+                
     async def shutdown(self, signal, loop):
         """Cleanup tasks tied to the service's shutdown."""
         logger.info(f"Received exit signal {signal.name}...")
@@ -118,6 +212,7 @@ class TranscriberBot:
 
 <b>How to Use:</b>
 - Send any supported media URL to have its audio transcribed.
+- (Optional) Send an audio message or a wav/mp3 file to have its audio transcribed.
 - Use /model to change the transcription model.
 - Use /help or /about to display this help message.
 
@@ -173,9 +268,60 @@ The original author is NOT responsible for how this bot is utilized. All code an
                 f"Available models:\n{models_list}",
                 parse_mode='HTML')
 
+    async def handle_voice_message(self, update: Update, context: CallbackContext) -> None:
+        user_id = update.effective_user.id
+        voice = update.message.voice
+        
+        if not self.config.getboolean('AudioSettings', 'allowvoicemessages'):
+            await update.message.reply_text("Voice messages are not allowed.")
+            return
+
+        file = await context.bot.get_file(voice.file_id)
+        ogg_file_path = os.path.join(audio_messages_dir, f'{file.file_id}.ogg')
+        wav_file_path = os.path.join(audio_messages_dir, f'{file.file_id}.wav')
+        await file.download_to_drive(ogg_file_path)
+        
+        # Convert Ogg Opus to WAV using ffmpeg
+        try:
+            subprocess.run(['ffmpeg', '-i', ogg_file_path, wav_file_path], check=True)
+            logger.info(f"Converted voice message to WAV format: {wav_file_path}")
+            
+            await self.task_queue.put((wav_file_path, context.bot, update))
+            queue_length = self.task_queue.qsize()
+            response_text = "Your request is next and is currently being processed." if queue_length == 1 else f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
+            await update.message.reply_text(response_text)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error converting voice message: {e}")
+
+    async def handle_audio_file(self, update: Update, context: CallbackContext) -> None:
+        user_id = update.effective_user.id
+        audio = update.message.audio
+        document = update.message.document
+
+        if not self.config.getboolean('AudioSettings', 'allowaudiofiles'):
+            await update.message.reply_text("Audio files are not allowed.")
+            return
+
+        if audio:
+            file = await context.bot.get_file(audio.file_id)
+            file_path = os.path.join(audio_messages_dir, f'{audio.file_id}.mp3')
+        elif document and document.mime_type in ['audio/mpeg', 'audio/x-wav', 'audio/wav', 'audio/mp3']:
+            file = await context.bot.get_file(document.file_id)
+            file_path = os.path.join(audio_messages_dir, document.file_name)
+        else:
+            await update.message.reply_text("Unsupported file format. Please send MP3 or WAV files.")
+            return
+
+        await file.download_to_drive(file_path)
+        
+        await self.task_queue.put((file_path, context.bot, update))
+        queue_length = self.task_queue.qsize()
+        response_text = "Your request is next and is currently being processed." if queue_length == 1 else f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
+        await update.message.reply_text(response_text)
+
     def run(self):
         loop = asyncio.get_event_loop()
-        
+
         for sig in [signal.SIGINT, signal.SIGTERM]:
             loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(self.shutdown(s, loop)))
 
@@ -186,13 +332,22 @@ The original author is NOT responsible for how this bot is utilized. All code an
 
                 # Adding handlers
                 text_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
-                self.application.add_handler(text_handler)
+                voice_handler = MessageHandler(filters.VOICE, self.handle_voice_message)
+                audio_handler = MessageHandler(
+                    filters.AUDIO | 
+                    filters.Document.FileExtension("mp3") | 
+                    filters.Document.FileExtension("wav") | 
+                    filters.Document.Category("audio"), 
+                    self.handle_audio_file
+                )
 
-                # Here's where you add the command handler for /help
+                self.application.add_handler(text_handler)
+                self.application.add_handler(voice_handler)
+                self.application.add_handler(audio_handler)
+
                 help_handler = CommandHandler(['help', 'about'], self.help_command)
                 self.application.add_handler(help_handler)
 
-                # Adding model command handler
                 model_handler = CommandHandler('model', self.model_command)
                 self.application.add_handler(model_handler)
 
