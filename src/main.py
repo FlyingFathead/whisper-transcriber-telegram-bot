@@ -25,7 +25,7 @@ from telegram.ext import Application, MessageHandler, filters, CallbackContext
 from telegram.ext import CommandHandler
 
 # Adjust import paths based on new structure
-from transcription_handler import process_url_message, set_user_model, get_whisper_model, transcribe_audio, get_best_gpu, get_audio_duration, estimate_transcription_time, format_duration
+from transcription_handler import process_url_message, set_user_model, get_whisper_model, transcribe_audio, get_best_gpu, get_audio_duration, estimate_transcription_time, format_duration, get_whisper_language, set_user_language
 from utils.bot_token import get_bot_token
 from utils.utils import print_startup_message
 
@@ -118,15 +118,23 @@ class TranscriberBot:
 
             async with TranscriberBot.processing_lock:  # Use the class-level lock
                 model = get_whisper_model(user_id)
+                language = get_whisper_language(user_id)
+
+                if language == "auto":
+                    language = None
 
                 if isinstance(task, str) and task.startswith('http'):
                     logger.info(f"Processing URL: {task}")
-                    await process_url_message(task, bot, update, model)
+                    await process_url_message(task, bot, update, model, language)
                 elif task.endswith('.wav') or task.endswith('.mp3'):
                     logger.info(f"Processing audio file: {task}")
 
                     # Notify the user about the model and GPU
-                    await bot.send_message(chat_id=update.effective_chat.id, text=f"Starting transcription with model: {model}")
+                    if language:
+                        await bot.send_message(chat_id=update.effective_chat.id, text=f"Starting transcription with model: {model} and language: {language}")
+                    else:
+                        await bot.send_message(chat_id=update.effective_chat.id, text=f"Starting transcription with model: {model} and language autodetection")
+
                     best_gpu = get_best_gpu()
                     if best_gpu:
                         device = f'cuda:{best_gpu.id}'
@@ -163,9 +171,11 @@ class TranscriberBot:
                     estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
 
                     formatted_audio_duration = format_duration(audio_duration)
+                    language_setting = language if language else "autodetection"
                     detailed_message = (
                         f"Audio file length:\n{formatted_audio_duration}\n\n"
                         f"Whisper model in use:\n{model}\n\n"                
+                        f"Model language set to:\n{language_setting}\n\n"
                         f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
                         f"Time now:\n{time_now_str}\n\n"
                         f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
@@ -175,7 +185,7 @@ class TranscriberBot:
                     await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
                     # Now start the transcription process
-                    transcription_paths = await transcribe_audio(task, self.output_dir, "", "", self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'), model, device)
+                    transcription_paths = await transcribe_audio(task, self.output_dir, "", "", self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'), model, device, language)
                     if not transcription_paths:
                         # Notify if transcription fails
                         await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")
@@ -210,6 +220,31 @@ class TranscriberBot:
         await asyncio.gather(*tasks, return_exceptions=True)
         loop.stop()
 
+    # set the model's language
+    async def set_language_command(self, update: Update, context: CallbackContext) -> None:
+        user_id = update.effective_user.id
+        supported_languages = self.config.get('WhisperSettings', 'supportedlanguages', fallback='auto').split(', ')
+
+        if not context.args:
+            # Display the supported languages if no argument is provided
+            await update.message.reply_text(
+                f"Please specify a supported language code or set to <code>auto</code> for autodetect.\n\nExamples:\n<code>/language en</code>\n<code>/language auto</code>\n\n"
+                f"Supported languages are: {', '.join(supported_languages)}",
+                parse_mode='HTML'
+            )
+            return
+
+        language_code = context.args[0]
+        if language_code in supported_languages:
+            set_user_language(user_id, language_code)
+            await update.message.reply_text(f"Language set to: {language_code}")
+        else:
+            await update.message.reply_text(
+                f"Unsupported language code. Supported languages are: {', '.join(supported_languages)}",
+                parse_mode='HTML'
+            )
+
+    # view help
     async def help_command(self, update: Update, context: CallbackContext) -> None:
         models_list = ', '.join(self.valid_models)  # Dynamically generate the list of valid models
         help_text = f"""<b>Welcome to the Whisper Transcriber Bot!</b>
@@ -220,6 +255,8 @@ class TranscriberBot:
 - Send any supported media URL to have its audio transcribed.
 - (Optional) Send an audio message or a wav/mp3 file to have its audio transcribed.
 - Use /model to change the transcription model.
+- Use /language to change the model language in use (use /language auto for automatic detection).
+<i>TIP: setting the language manually to the audio's language may improve accuracy and speed.</i>
 - Use /help or /about to display this help message.
 
 <b>Whisper model currently in use:</b>
@@ -357,9 +394,13 @@ The original author is NOT responsible for how this bot is utilized. All code an
                 model_handler = CommandHandler('model', self.model_command)
                 self.application.add_handler(model_handler)
 
+                language_handler = CommandHandler('language', self.set_language_command)
+                self.application.add_handler(language_handler)
+
                 loop.create_task(self.process_queue())
                 self.application.run_polling()
                 connected = True
+
             except Exception as e:
                 logger.error(f"Failed to start polling due to an error: {e}")
                 if self.restart_on_failure:

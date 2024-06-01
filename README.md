@@ -57,7 +57,7 @@ After launching the bot, you can interact with it via Telegram:
 - `/model` - view the model in use or change to another available model.
 
 ## Changes
-
+- v0.14.3 - Whisper model language selection via `/language` command
 - v0.14.2 - display duration & estimates
 - v0.14.1 - small fixes to the file handler; more detailed exception catching
 - v0.14 - now handles both Telegram's audio messages as well as audio files (.wav, .mp3)

@@ -59,6 +59,39 @@ user_models = {}
 # lock the user models
 user_models_lock = threading.Lock()
 
+# Define a dictionary at the module level to store user-specific languages
+user_languages = {}
+
+# lock the user languages
+user_languages_lock = threading.Lock()
+
+# Modify the set_user_language function to use the lock
+def set_user_language(user_id, language):
+    with user_languages_lock:  # Acquire the lock before modifying user_languages
+        global user_languages
+        if user_id and language:
+            user_languages[user_id] = language
+            logger.info(f"Language set for user {user_id}: {language}")
+        else:
+            logger.error(f"Failed to set language for user {user_id}: {language}")
+
+# get whisper language
+def get_whisper_language(user_id=None):
+    with user_languages_lock:  # Acquire the lock before accessing user_languages
+        logger.debug(f"Attempting to fetch language for user_id: {user_id}")
+        global user_languages
+        if user_id is None or user_id not in user_languages:
+            config = configparser.ConfigParser()
+            config_path = os.path.join(base_dir, 'config', 'config.ini')
+            config.read(config_path)
+            default_language = config.get('WhisperSettings', 'defaultlanguage', fallback='auto')
+            logger.info(f"No custom language for user {user_id}. Using default language: {default_language}")
+            return default_language
+        else:
+            custom_language = user_languages[user_id]
+            logger.info(f"Returning custom language for user {user_id}: {custom_language}")
+            return custom_language
+
 # get the general settings
 def get_general_settings():
     config = configparser.ConfigParser()    
@@ -228,13 +261,17 @@ def log_stderr(line):
 
 # transcription logic with header inclusion based on settings
 # (always tries to use the gpu that's available with most free VRAM)
-async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header, model, device):
+
+async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header, model, device, language):
     log_gpu_utilization()  # Log GPU utilization before starting transcription
 
     logger.info(f"Using device: {device} for transcription")
-    logger.info(f"Starting transcription with model '{model}' for: {audio_path}")
-
-    transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir, "--device", device]
+    if language and language != "auto":
+        logger.info(f"Starting transcription with model '{model}' and language '{language}' for: {audio_path}")
+        transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir, "--device", device, "--language", language]
+    else:
+        logger.info(f"Starting transcription with model '{model}' and autodetect language for: {audio_path}")
+        transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir, "--device", device]
 
     # Log the transcription command
     logger.info(f"Transcription command: {' '.join(transcription_command)}")
@@ -266,7 +303,7 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
         header_content = ""
 
         # Generate the header if needed, now including the model used
-        ai_transcript_header = f"[ Transcript generated with: https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/ | OpenAI Whisper model: `{model}` ]"
+        ai_transcript_header = f"[ Transcript generated with: https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/ | OpenAI Whisper model: `{model}` | Language: `{language}` ]"
         header_content = ""
 
         if include_header:
@@ -288,7 +325,7 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
                         modified.write(header_content + data)
                 except Exception as e:
                     logger.error(f"Error adding header to {file_path}: {e}")
-                
+            
             # Log the creation and update of each file
             if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
                 logger.info(f"Transcription file {'updated' if fmt == 'txt' and include_header else 'created'}: {file_path}")
@@ -304,7 +341,7 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
 
 # Process the message's URL and keep the user informed
 # (Added in the new GPU logging function call to the process_url_message function)
-async def process_url_message(message_text, bot, update, model):
+async def process_url_message(message_text, bot, update, model, language):
     try:
         # Get general settings right at the beginning of the function
         settings = get_general_settings()
@@ -357,8 +394,6 @@ async def process_url_message(message_text, bot, update, model):
                 # Construct video information message
                 # Pass the normalized URL directly into the video info creation
                 details['video_url'] = normalized_url                
-                # video_info_message = create_video_info_message(details)
-                # await bot.send_message(chat_id=update.effective_chat.id, text=f"<code>{video_info_message}</code>", parse_mode='HTML')
                 video_info_message = create_video_info_message(details)
                 for part in split_message(video_info_message):
                     await bot.send_message(chat_id=update.effective_chat.id, text=f"<code>{part}</code>", parse_mode='HTML')
@@ -400,8 +435,10 @@ async def process_url_message(message_text, bot, update, model):
             )
 
             # Prepare and send the detailed message
+            language_setting = language if language else "autodetection"
             detailed_message = (
-                f"Whisper model in use:\n{model}\n\n"                
+                f"Whisper model in use:\n{model}\n\n"
+                f"Model language set to:\n{language_setting}\n\n"
                 f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
                 f"Time now:\n{time_now_str}\n\n"
                 f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
@@ -432,7 +469,7 @@ async def process_url_message(message_text, bot, update, model):
             await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
 
             # Transcribe the audio and handle transcription output
-            transcription_paths = await transcribe_audio(audio_path, output_dir, normalized_url, video_info_message, include_header, model, device)
+            transcription_paths = await transcribe_audio(audio_path, output_dir, normalized_url, video_info_message, include_header, model, device, language)
 
             if not transcription_paths:
                 # Notify if transcription fails
