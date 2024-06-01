@@ -1,6 +1,8 @@
 # whisper-transcriber-telegram-bot
 
-A local Whisper AI transcriber bot for Telegram, utilizing GPU or CPU for processing. Written for Python 3.10+.
+A local Whisper AI transcriber bot for Telegram, utilizing GPU or CPU for processing. 
+
+Runs on Python 3.10+.
 
 ## About
 
