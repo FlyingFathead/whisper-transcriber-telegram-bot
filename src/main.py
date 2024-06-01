@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.14.1"
+version_number = "0.14.2"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -25,7 +25,7 @@ from telegram.ext import Application, MessageHandler, filters, CallbackContext
 from telegram.ext import CommandHandler
 
 # Adjust import paths based on new structure
-from transcription_handler import process_url_message, set_user_model, get_whisper_model, transcribe_audio, get_best_gpu, get_audio_duration, estimate_transcription_time
+from transcription_handler import process_url_message, set_user_model, get_whisper_model, transcribe_audio, get_best_gpu, get_audio_duration, estimate_transcription_time, format_duration
 from utils.bot_token import get_bot_token
 from utils.utils import print_startup_message
 
@@ -156,13 +156,15 @@ class TranscriberBot:
 
                     # Calculate estimated finish time
                     current_time = datetime.now()
-                    estimated_finish_time = current_time + timedelta(minutes=estimated_minutes)
+                    estimated_finish_time = current_time + timedelta(seconds=estimated_time)
 
                     # Format messages for start and estimated finish time
                     time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
                     estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
 
+                    formatted_audio_duration = format_duration(audio_duration)
                     detailed_message = (
+                        f"Audio file length:\n{formatted_audio_duration}\n\n"
                         f"Whisper model in use:\n{model}\n\n"                
                         f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
                         f"Time now:\n{time_now_str}\n\n"
@@ -197,7 +199,6 @@ class TranscriberBot:
                 self.task_queue.task_done()
             logger.info(f"Task completed for user ID {user_id}: {task}")
 
-                
     async def shutdown(self, signal, loop):
         """Cleanup tasks tied to the service's shutdown."""
         logger.info(f"Received exit signal {signal.name}...")

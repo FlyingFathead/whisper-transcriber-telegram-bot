@@ -486,9 +486,11 @@ def format_duration(duration):
     hours, remainder = divmod(duration, 3600)
     minutes, seconds = divmod(remainder, 60)
     if hours:
-        return f"{hours}h {minutes}m {seconds}s"
+        return f"{int(hours)}h {int(minutes)}m {int(seconds)}s"
+    elif minutes:
+        return f"{int(minutes)}m {int(seconds)}s"
     else:
-        return f"{minutes}m {seconds}s"
+        return f"{int(seconds)}s"
 
 # Fetch details for videos
 async def fetch_video_details(url, max_retries=3, base_delay=5, command_timeout=30):
@@ -630,12 +632,36 @@ def estimate_transcription_time(model, audio_duration):
     :param audio_duration: The duration of the audio in seconds.
     :return: Estimated time in seconds to transcribe the audio.
     """
+    # Ensure audio_duration is not None and is greater than 0
+    if audio_duration is None or audio_duration <= 0:
+        logger.error(f"Invalid audio duration: {audio_duration}")
+        return 0
+    
+    logger.info(f"Estimating transcription time for model: {model} and audio duration: {audio_duration} seconds")
+    
     # Assume 'large' model takes its duration equal to the audio's duration to transcribe.
     # Scale other models based on their relative speed.
     baseline_time = audio_duration  # This is for the 'large' model as a baseline
     relative_speed = model_speeds.get(model, 1)  # Default to 1 if model not found
     estimated_time = baseline_time / relative_speed
-    return estimated_time
+    
+    logger.info(f"Estimated transcription time: {estimated_time} seconds")
+    return max(estimated_time, 60)  # Ensure at least 1 minute is shown
+
+# def estimate_transcription_time(model, audio_duration):
+#     """
+#     Estimate the transcription time based on the model size and audio duration.
+
+#     :param model: The model size used for transcription.
+#     :param audio_duration: The duration of the audio in seconds.
+#     :return: Estimated time in seconds to transcribe the audio.
+#     """
+#     # Assume 'large' model takes its duration equal to the audio's duration to transcribe.
+#     # Scale other models based on their relative speed.
+#     baseline_time = audio_duration  # This is for the 'large' model as a baseline
+#     relative_speed = model_speeds.get(model, 1)  # Default to 1 if model not found
+#     estimated_time = baseline_time / relative_speed
+#     return estimated_time
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # get the best GPU availability
