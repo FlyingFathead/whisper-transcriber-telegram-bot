@@ -55,6 +55,7 @@ After launching the bot, you can interact with it via Telegram:
 ### Commands:
 - `/help` and `/about` - get help on bot use, list version number, available models and commands, etc.
 - `/model` - view the model in use or change to another available model.
+- `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
 - v0.14.3 - Whisper model language selection via `/language` command
