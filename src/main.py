@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.14.2"
+version_number = "0.14.4"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -54,6 +54,8 @@ class TranscriberBot:
     processing_lock = asyncio.Lock() 
 
     def __init__(self):
+        self.start_time = datetime.now()        
+
         self.token = get_bot_token()
         self.task_queue = asyncio.Queue()  # queue tasks
         self.is_processing = asyncio.Lock()  # Lock to ensure one transcription at a time
@@ -254,9 +256,14 @@ class TranscriberBot:
 <b>How to Use:</b>
 - Send any supported media URL to have its audio transcribed.
 - (Optional) Send an audio message or a wav/mp3 file to have its audio transcribed.
+
+- Use /info to view the current settings, status and jobs in queue
 - Use /model to change the transcription model.
-- Use /language to change the model language in use (use /language auto for automatic detection).
+- Use /language to change the model language in use
+  (set language to <code>auto</code> for automatic language detection)
+
 <i>TIP: setting the language manually to the audio's language may improve accuracy and speed.</i>
+
 - Use /help or /about to display this help message.
 
 <b>Whisper model currently in use:</b>
@@ -281,7 +288,7 @@ The original author is NOT responsible for how this bot is utilized. All code an
         if not context.args:
             current_model = get_whisper_model(user_id)
             await update.message.reply_text(
-                f"<b>Current model:</b>\n<code>{current_model}</code>\n\n"
+                f"<b>Current model in use:</b>\n<code>{current_model}</code>\n\n"
                 f"<b>Available models:</b>\n{models_list}\n\n"
                 "To change the model, use commands like:\n"
                 "<code>/model medium.en</code>\n"
@@ -362,6 +369,34 @@ The original author is NOT responsible for how this bot is utilized. All code an
         response_text = "Your request is next and is currently being processed." if queue_length == 1 else f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
         await update.message.reply_text(response_text)
 
+
+    async def info_command(self, update: Update, context: CallbackContext) -> None:
+        user_id = update.effective_user.id
+        current_model = get_whisper_model(user_id)
+        current_language = get_whisper_language(user_id)
+        uptime = datetime.now() - self.start_time  # Assuming self.start_time is set at bot launch
+        gpu_info = get_best_gpu()
+        queue_length = self.task_queue.qsize()
+
+        if gpu_info:
+            gpu_status = f"GPU {gpu_info.id}: {gpu_info.name}, Free Memory: {gpu_info.memoryFree} MB"
+        else:
+            gpu_status = "No GPU available, using CPU"
+
+        info_message = (
+            f"<b>Current model in use:</b> {current_model}\n"
+            f"(change with: /model)\n\n"
+            f"<b>Selected transcription language:</b> {current_language}\n"
+            f"(change with /language)\n\n"
+            f"<b>Bot uptime:</b> {str(uptime)}\n"
+            f"<b>Bot started on:</b> {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"<b>Current active GPU status:</b>\n{gpu_status}\n\n"
+            f"<b>Jobs in queue:</b> {queue_length}"
+        )
+
+        await update.message.reply_text(info_message, parse_mode='HTML')
+
+    # run
     def run(self):
         loop = asyncio.get_event_loop()
 
@@ -390,6 +425,9 @@ The original author is NOT responsible for how this bot is utilized. All code an
 
                 help_handler = CommandHandler(['help', 'about'], self.help_command)
                 self.application.add_handler(help_handler)
+
+                info_handler = CommandHandler('info', self.info_command)
+                self.application.add_handler(info_handler)
 
                 model_handler = CommandHandler('model', self.model_command)
                 self.application.add_handler(model_handler)
