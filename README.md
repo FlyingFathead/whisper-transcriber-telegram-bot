@@ -59,6 +59,7 @@ After launching the bot, you can interact with it via Telegram:
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.14.5 - fixed following the "keep/don't keep audio files" config rule
 - v0.14.4 - added the `/info` command for viewing current settings & queue status
 - v0.14.3 - Whisper model language selection via `/language` command
 - v0.14.2 - display duration & estimates

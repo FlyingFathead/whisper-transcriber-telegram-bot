@@ -299,9 +299,6 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
 
         logger.info(f"Whisper transcription completed for: {audio_path}")
 
-        # Generate the header if needed
-        header_content = ""
-
         # Generate the header if needed, now including the model used
         ai_transcript_header = f"[ Transcript generated with: https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/ | OpenAI Whisper model: `{model}` | Language: `{language}` ]"
         header_content = ""
@@ -332,6 +329,18 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
                 created_files[fmt] = file_path
             else:
                 logger.warning(f"Expected transcription file not found or empty: {file_path}")
+
+        # Check the keepaudiofiles setting and delete the audio file if necessary
+        transcription_settings = get_transcription_settings()
+        keep_audio_files = transcription_settings.get('keep_audio_files', False)
+        logger.info(f"keepaudiofiles setting: {keep_audio_files}")
+
+        if not keep_audio_files and os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+                logger.info(f"Deleted audio file: {audio_path}")
+            except Exception as e:
+                logger.error(f"Failed to delete audio file {audio_path}: {e}")
 
         return created_files
 
