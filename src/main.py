@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.14.5"
+version_number = "0.14.6"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -119,97 +119,104 @@ class TranscriberBot:
             logger.info(f"Processing task for user ID {user_id}: {task}")
 
             async with TranscriberBot.processing_lock:  # Use the class-level lock
-                model = get_whisper_model(user_id)
-                language = get_whisper_language(user_id)
+                try:
+                    model = get_whisper_model(user_id)
+                    language = get_whisper_language(user_id)
 
-                if language == "auto":
-                    language = None
+                    if language == "auto":
+                        language = None
 
-                if isinstance(task, str) and task.startswith('http'):
-                    logger.info(f"Processing URL: {task}")
-                    await process_url_message(task, bot, update, model, language)
-                elif task.endswith('.wav') or task.endswith('.mp3'):
-                    logger.info(f"Processing audio file: {task}")
+                    if isinstance(task, str) and task.startswith('http'):
+                        logger.info(f"Processing URL: {task}")
+                        await process_url_message(task, bot, update, model, language)
+                    elif task.endswith('.wav') or task.endswith('.mp3'):
+                        logger.info(f"Processing audio file: {task}")
 
-                    # Notify the user about the model and GPU
-                    if language:
-                        await bot.send_message(chat_id=update.effective_chat.id, text=f"Starting transcription with model: {model} and language: {language}")
-                    else:
-                        await bot.send_message(chat_id=update.effective_chat.id, text=f"Starting transcription with model: {model} and language autodetection")
+                        # # Notify the user about the model and GPU
+                        # if language:
+                        #     await bot.send_message(chat_id=update.effective_chat.id, text=f"Starting transcription with model: {model} and language: {language}")
+                        # else:
+                        #     await bot.send_message(chat_id=update.effective_chat.id, text=f"Starting transcription with model: {model} and language autodetection")
 
-                    best_gpu = get_best_gpu()
-                    if best_gpu:
-                        device = f'cuda:{best_gpu.id}'
-                        gpu_message = (
-                            f"Using GPU {best_gpu.id}: {best_gpu.name}\n"
-                            f"Free Memory: {best_gpu.memoryFree} MB\n"
-                            f"Load: {best_gpu.load * 100:.1f}%"
+                        best_gpu = get_best_gpu()
+                        if best_gpu:
+                            device = f'cuda:{best_gpu.id}'
+                            gpu_message = (
+                                f"Using GPU {best_gpu.id}: {best_gpu.name}\n"
+                                f"Free Memory: {best_gpu.memoryFree} MB\n"
+                                f"Load: {best_gpu.load * 100:.1f}%"
+                            )
+                        else:
+                            device = 'cpu'
+                            gpu_message = "No GPU available, using CPU for transcription."
+                        
+                        # Log and send the GPU information to the user
+                        logger.info(gpu_message)
+                        await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
+
+                        # Inform the user about the estimated time for transcription
+                        audio_duration = get_audio_duration(task)
+                        if audio_duration is None:
+                            await bot.send_message(chat_id=update.effective_chat.id, text="Invalid audio file. Please upload or link to a valid audio file.")
+                            if os.path.exists(task):
+                                os.remove(task)
+                            continue
+
+                        estimated_time = estimate_transcription_time(model, audio_duration)
+                        estimated_minutes = estimated_time / 60  # Convert to minutes for user-friendly display
+
+                        # Calculate estimated finish time
+                        current_time = datetime.now()
+                        estimated_finish_time = current_time + timedelta(seconds=estimated_time)
+
+                        # Format messages for start and estimated finish time
+                        time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
+                        estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
+
+                        formatted_audio_duration = format_duration(audio_duration)
+                        language_setting = language if language else "autodetection"
+                        detailed_message = (
+                            f"Audio file length:\n{formatted_audio_duration}\n\n"
+                            f"Whisper model in use:\n{model}\n\n"                
+                            f"Model language set to:\n{language_setting}\n\n"
+                            f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
+                            f"Time now:\n{time_now_str}\n\n"
+                            f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
+                            "Transcribing audio..."
                         )
-                    else:
-                        device = 'cpu'
-                        gpu_message = "No GPU available, using CPU for transcription."
-                    
-                    # Log and send the GPU information to the user
-                    logger.info(gpu_message)
-                    await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
+                        logger.info(detailed_message)
+                        await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
-                    # Inform the user about the estimated time for transcription
-                    audio_duration = get_audio_duration(task)
-                    if audio_duration is None:
-                        await bot.send_message(chat_id=update.effective_chat.id, text="Invalid audio file. Please upload or link to a valid audio file.")
-                        if os.path.exists(task):
-                            os.remove(task)
-                        continue
+                        # Now start the transcription process
+                        transcription_paths = await transcribe_audio(task, self.output_dir, "", "", self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'), model, device, language)
+                        if not transcription_paths:
+                            # Notify if transcription fails
+                            await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")
+                            if os.path.exists(task):
+                                os.remove(task)
+                            continue
 
-                    estimated_time = estimate_transcription_time(model, audio_duration)
-                    estimated_minutes = estimated_time / 60  # Convert to minutes for user-friendly display
+                        # Send transcription files and finalize the process
+                        for fmt, path in transcription_paths.items():
+                            try:
+                                await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
+                                logger.info(f"Sent {fmt} file to user {user_id}: {path}")
+                            except Exception as e:
+                                logger.error(f"Failed to send {fmt} file to user {user_id}: {path}, error: {e}")
 
-                    # Calculate estimated finish time
-                    current_time = datetime.now()
-                    estimated_finish_time = current_time + timedelta(seconds=estimated_time)
+                        if not self.config.getboolean('TranscriptionSettings', 'keepaudiofiles'):
+                            try:
+                                os.remove(task)
+                                logger.info(f"Deleted audio file: {task}")
+                            except Exception as e:
+                                logger.error(f"Failed to delete audio file {task}: {e}")
 
-                    # Format messages for start and estimated finish time
-                    time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
-                    estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
-
-                    formatted_audio_duration = format_duration(audio_duration)
-                    language_setting = language if language else "autodetection"
-                    detailed_message = (
-                        f"Audio file length:\n{formatted_audio_duration}\n\n"
-                        f"Whisper model in use:\n{model}\n\n"                
-                        f"Model language set to:\n{language_setting}\n\n"
-                        f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
-                        f"Time now:\n{time_now_str}\n\n"
-                        f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
-                        "Transcribing audio..."
-                    )
-                    logger.info(detailed_message)
-                    await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
-
-                    # Now start the transcription process
-                    transcription_paths = await transcribe_audio(task, self.output_dir, "", "", self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'), model, device, language)
-                    if not transcription_paths:
-                        # Notify if transcription fails
-                        await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")
-                        if os.path.exists(task):
-                            os.remove(task)
-                        continue
-
-                    # Send transcription files and finalize the process
-                    for fmt, path in transcription_paths.items():
-                        try:
-                            await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
-                            logger.info(f"Sent {fmt} file to user {user_id}: {path}")
-                        except Exception as e:
-                            logger.error(f"Failed to send {fmt} file to user {user_id}: {path}, error: {e}")
-
-                    if not self.config.getboolean('TranscriptionSettings', 'keepaudiofiles'):
-                        os.remove(task)
-                    
-                    # Send the "Have a nice day!" message
+                except Exception as e:
+                    logger.error(f"An error occurred while processing the task: {e}")
+                finally:
+                    self.task_queue.task_done()
                     await bot.send_message(chat_id=update.effective_chat.id, text="Transcription complete. Have a nice day!")
-                self.task_queue.task_done()
-            logger.info(f"Task completed for user ID {user_id}: {task}")
+                logger.info(f"Task completed for user ID {user_id}: {task}")
 
     async def shutdown(self, signal, loop):
         """Cleanup tasks tied to the service's shutdown."""
