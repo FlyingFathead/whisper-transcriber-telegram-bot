@@ -1,0 +1,17 @@
+version: '3.4'
+
+services:
+
+  whisper-transcriber-telegram-bot:
+    image: whisper-transcriber-telegram-bot
+    container_name: whisper-transcriber-telegram-bot
+    volumes:
+      - ./config:/app/config
+      - whisper_cache:/root/.cache/whisper
+    environment:
+      - TELEGRAM_BOT_TOKEN=
+    restart: unless-stopped
+
+volumes:
+  whisper_cache:
+      driver: local
