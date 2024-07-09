@@ -96,6 +96,7 @@ After launching the bot, you can interact with it via Telegram:
    - can be set to `true` or `false` depending on your preferences
    - `sendasmessages` (when set to `true`) sends the transcripts as Telegram messages in chat
    - `sendasfiles` (when set to `true`) sends the transcripts as `.stt`, `.vtt` and `.txt`
+   - small fixes to i.e. url handling (`allowallsites` checks; YouTube)
 - v0.14.6 - fixed occasional queue hangs with sent audio files (wav/mp3)
 - v0.14.5 - fixed following the "keep/don't keep audio files" config rule
 - v0.14.4 - added the `/info` command for viewing current settings & queue status
