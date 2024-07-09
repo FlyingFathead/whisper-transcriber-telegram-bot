@@ -44,6 +44,40 @@ To set up the Whisper Transcriber Telegram Bot, follow these steps:
    python src/main.py
    ```
 
+## Dockerized Installation
+
+This section provides instructions on how to build and run the Whisper Transcriber Telegram Bot using Docker, making deployment easier and more consistent across different environments.
+
+### Prerequisites
+
+- Docker installed on your machine.
+- Docker Compose (optional, for ease of handling environment variables and settings).
+
+### Building the Docker Image
+
+1. Navigate to the root directory of the project where the `Dockerfile` is located.
+2. Build the Docker image using the following command:
+
+   ```bash
+   docker build -t whisper-transcriber-telegram-bot .
+   ```
+
+   This command builds a Docker image named `whisper-transcriber-telegram-bot` based on the instructions in your `Dockerfile`.
+
+### Running the Bot Using Docker
+
+To run the bot using Docker:
+
+```bash
+docker run --name whisper-bot -d \
+  -e TELEGRAM_BOT_TOKEN='YourTelegramBotToken' \
+  -v $(pwd)/config:/app/config \
+  -v whisper_cache:/root/.cache/whisper \
+  whisper-transcriber-telegram-bot
+```
+
+Replace `'YourTelegramBotToken'` with your actual Telegram bot token. This command also mounts the `config` directory and the Whisper model cache directory to preserve settings and downloaded models across container restarts.
+
 ## Usage
 
 After launching the bot, you can interact with it via Telegram:
