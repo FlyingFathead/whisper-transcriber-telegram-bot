@@ -23,11 +23,21 @@ from datetime import datetime, timedelta
 # import wave
 from pydub import AudioSegment
 
+# tg modules // button selection
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 # internal modules
 from utils.language_selection import ask_language
 
-# tg modules // button selection
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+# config
+from config_loader import ConfigLoader
+config = ConfigLoader.get_config()
+
+# # Load config
+# config = configparser.ConfigParser()
+# config.read('config/config.ini')
+# send_as_files = config.getboolean('TranscriptionSettings', 'sendasfiles', fallback=True)
+# send_as_messages = config.getboolean('TranscriptionSettings', 'sendasmessages', fallback=False)
 
 # Toggle this to use the full description or a snippet.
 USE_SNIPPET_FOR_DESCRIPTION = False
@@ -146,31 +156,52 @@ def get_audio_duration(file_path):
     except Exception as e:
         logger.error(f"Error reading audio file {file_path}: {e}")
         return None
-    
-# get transcription settings
+
+# (new) Function to get transcription settings
 def get_transcription_settings():
-    config = configparser.ConfigParser()
-    config_path = os.path.join(base_dir, 'config', 'config.ini')
+    try:
+        config = ConfigLoader.get_config()
+        transcription_settings = {
+            'include_header': config.getboolean('TranscriptionSettings', 'includeheaderintranscription', fallback=False),
+            'keep_audio_files': config.getboolean('TranscriptionSettings', 'keepaudiofiles', fallback=False),
+            'send_as_files': config.getboolean('TranscriptionSettings', 'sendasfiles', fallback=True),
+            'send_as_messages': config.getboolean('TranscriptionSettings', 'sendasmessages', fallback=False),
+        }
+        logger.info(f"Loaded transcription settings: {transcription_settings}")
+        return transcription_settings
+    except Exception as e:
+        logger.error(f"Error loading transcription settings: {e}")
+        return {
+            'include_header': False,
+            'keep_audio_files': False,
+            'send_as_files': True,
+            'send_as_messages': False,
+        }
 
-    if not os.path.exists(config_path):
-        logger.error("Error: config.ini not found at the expected path.")
-        sys.exit(1)
+# # (old) get transcription settings
+# def get_transcription_settings():
+#     config = configparser.ConfigParser()
+#     config_path = os.path.join(base_dir, 'config', 'config.ini')
 
-    config.read(config_path)
+#     if not os.path.exists(config_path):
+#         logger.error("Error: config.ini not found at the expected path.")
+#         sys.exit(1)
 
-    if 'TranscriptionSettings' not in config:
-        logger.error("TranscriptionSettings section missing in config.ini")
-        sys.exit(1)
+#     config.read(config_path)
 
-    include_header = config.getboolean('TranscriptionSettings', 'IncludeHeaderInTranscription', fallback=False)
-    keep_audio_files = config.getboolean('TranscriptionSettings', 'KeepAudioFiles', fallback=False)
+#     if 'TranscriptionSettings' not in config:
+#         logger.error("TranscriptionSettings section missing in config.ini")
+#         sys.exit(1)
 
-    logger.info(f"Transcription settings loaded: include_header={include_header}, keep_audio_files={keep_audio_files}")
+#     include_header = config.getboolean('TranscriptionSettings', 'IncludeHeaderInTranscription', fallback=False)
+#     keep_audio_files = config.getboolean('TranscriptionSettings', 'KeepAudioFiles', fallback=False)
+
+#     logger.info(f"Transcription settings loaded: include_header={include_header}, keep_audio_files={keep_audio_files}")
     
-    return {
-        'include_header': include_header,
-        'keep_audio_files': keep_audio_files
-    }
+#     return {
+#         'include_header': include_header,
+#         'keep_audio_files': keep_audio_files
+#     }
 
 # split long messages
 def split_message(message, max_length=4096):
@@ -261,17 +292,17 @@ def log_stderr(line):
 
 # transcription logic with header inclusion based on settings
 # (always tries to use the gpu that's available with most free VRAM)
-
-async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_message, include_header, model, device, language):
+# transcribe_audio function
+async def transcribe_audio(bot, update, audio_path, output_dir, youtube_url, video_info_message, include_header, model, device, language):
     log_gpu_utilization()  # Log GPU utilization before starting transcription
 
     logger.info(f"Using device: {device} for transcription")
+    transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir, "--device", device]
     if language and language != "auto":
         logger.info(f"Starting transcription with model '{model}' and language '{language}' for: {audio_path}")
-        transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir, "--device", device, "--language", language]
+        transcription_command.extend(["--language", language])
     else:
         logger.info(f"Starting transcription with model '{model}' and autodetect language for: {audio_path}")
-        transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir, "--device", device]
 
     # Log the transcription command
     logger.info(f"Transcription command: {' '.join(transcription_command)}")
@@ -295,7 +326,7 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
 
         if process.returncode != 0:
             logger.error(f"Whisper process failed with return code {process.returncode}")
-            return {}
+            return {}, ""
 
         logger.info(f"Whisper transcription completed for: {audio_path}")
 
@@ -307,143 +338,102 @@ async def transcribe_audio(audio_path, output_dir, youtube_url, video_info_messa
             # Combine the video info message with the AI-generated transcript notice
             header_content = f"{video_info_message}\n\n{ai_transcript_header}\n\n"
 
-        # Verify and log the generated files, adding header to .txt file
+        # Verify and log the generated files, adding header to .txt file if necessary
         base_filename = os.path.splitext(os.path.basename(audio_path))[0]
         created_files = {}
+        raw_content = ""
 
         for fmt in ['txt', 'srt', 'vtt']:
             file_path = f"{output_dir}/{base_filename}.{fmt}"
-            if fmt == 'txt' and include_header and os.path.exists(file_path):
-                # Prepend the header for txt file
-                try:
-                    with open(file_path, 'r') as original:
-                        data = original.read()
-                    with open(file_path, 'w') as modified:
-                        modified.write(header_content + data)
-                except Exception as e:
-                    logger.error(f"Error adding header to {file_path}: {e}")
-            
-            # Log the creation and update of each file
             if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                logger.info(f"Transcription file {'updated' if fmt == 'txt' and include_header else 'created'}: {file_path}")
+                if fmt == 'txt':
+                    with open(file_path, 'r') as f:
+                        raw_content = f.read()
+                    if include_header:
+                        # Prepend the header for txt file
+                        try:
+                            with open(file_path, 'r') as original:
+                                data = original.read()
+                            with open(file_path, 'w') as modified:
+                                modified.write(header_content + data)
+                        except Exception as e:
+                            logger.error(f"Error adding header to {file_path}: {e}")
+
                 created_files[fmt] = file_path
-            else:
-                logger.warning(f"Expected transcription file not found or empty: {file_path}")
+                logger.info(f"Transcription file {'updated' if fmt == 'txt' and include_header else 'created'}: {file_path}")
 
-        # Check the keepaudiofiles setting and delete the audio file if necessary
-        transcription_settings = get_transcription_settings()
-        keep_audio_files = transcription_settings.get('keep_audio_files', False)
-        logger.info(f"keepaudiofiles setting: {keep_audio_files}")
-
-        if not keep_audio_files and os.path.exists(audio_path):
-            try:
-                os.remove(audio_path)
-                logger.info(f"Deleted audio file: {audio_path}")
-            except Exception as e:
-                logger.error(f"Failed to delete audio file {audio_path}: {e}")
-
-        return created_files
+        # Return created files and raw content for further processing
+        return created_files, raw_content
 
     except Exception as e:
         logger.error(f"An error occurred during transcription: {e}")
-        return {}
+        return {}, ""
+
 
 # Process the message's URL and keep the user informed
 # (Added in the new GPU logging function call to the process_url_message function)
 async def process_url_message(message_text, bot, update, model, language):
     try:
-        # Get general settings right at the beginning of the function
-        settings = get_general_settings()
-
-        # Get general and transcription settings at the beginning of the function
+        # Get transcription settings
         transcription_settings = get_transcription_settings()
+        
+        logger.info(f"Transcription settings in process_url_message: {transcription_settings}")
 
-        include_header = transcription_settings.get('include_header', False)
-        keep_audio_files = transcription_settings.get('keep_audio_files', False)
-
-        # Get user ID from the update object
         user_id = update.effective_user.id
-
-        # Parse the url from the message text
         urls = re.findall(r'(https?://\S+)', message_text)
 
-        for url in urls:
-            # Normalize the YouTube URL to strip off any unnecessary parameters
-            # normalized_url = normalize_youtube_url(url)
+        # Get the allowallsites setting from the configuration
+        config = ConfigLoader.get_config()
+        allow_all_sites = config.getboolean('GeneralSettings', 'allowallsites', fallback=False)
 
-            # Check if the URL is from YouTube; if not, handle accordingly.
-            if "youtube" not in url and "youtu.be" not in url:
-                logger.info(f"Processing a non-YouTube URL: {url}")
-                # Directly assign the URL without normalization
-                normalized_url = url
-            else:
-                # Normalize YouTube URL
-                normalized_url = normalize_youtube_url(url) if "youtube" in url or "youtu.be" in url else url
-            
-            if not normalized_url:
-                # Inform the user and skip this URL
+        for url in urls:
+
+            if not allow_all_sites and not ("youtube" in url or "youtu.be" in url):
                 await bot.send_message(chat_id=update.effective_chat.id, text="Unsupported URL format. Currently, only YouTube URLs are fully supported.")
                 continue
-            
-            logger.info(f"User {user_id} requested a transcript for normalized URL: {normalized_url}")
 
-            # Notify the user that the bot is processing the URL
+            # Skip URL normalization
+            normalized_url = url  # Use the URL directly without normalization
+
+            logger.info(f"User {user_id} requested a transcript for normalized URL: {normalized_url}")
             await bot.send_message(chat_id=update.effective_chat.id, text="Processing URL...")
 
-            # Define audio file name and path
             audio_file_name = f"{user_id}_{int(time.time())}.mp3"
             audio_path = os.path.join(audio_dir, audio_file_name)
-
             video_info_message = "Transcription initiated."
 
-            # Fetch video details
             logger.info("Fetching video details...")
             details = await fetch_video_details(normalized_url)
             if details:
-                # Construct video information message
-                # Pass the normalized URL directly into the video info creation
-                details['video_url'] = normalized_url                
+                details['video_url'] = normalized_url
                 video_info_message = create_video_info_message(details)
                 for part in split_message(video_info_message):
                     await bot.send_message(chat_id=update.effective_chat.id, text=f"<code>{part}</code>", parse_mode='HTML')
             else:
                 logger.error("Failed to fetch video details.")
 
-            # Inform the user that the transcription process has started
             await bot.send_message(chat_id=update.effective_chat.id, text="Fetching the audio track...")
-
-            # Download the audio from the normalized URL
             await download_audio(normalized_url, audio_path)
-
             if not os.path.exists(audio_path):
-                # Notify if audio download fails
                 logger.info(f"Audio download failed for URL: {normalized_url}")
                 await bot.send_message(chat_id=update.effective_chat.id, text="Failed to download audio. Please ensure the URL is correct and points to a supported video.")
                 continue
-            
-            # Inform the user that the transcription process has started and do a time estimate
-            model = get_whisper_model(user_id)
 
-            # Use the audio duration from the video details
+            model = get_whisper_model(user_id)
             audio_duration = details['audio_duration']
             estimated_time = estimate_transcription_time(model, audio_duration)
-            estimated_minutes = estimated_time / 60  # Convert to minutes for user-friendly display
-
-            # Calculate estimated finish time
+            estimated_minutes = estimated_time / 60
             current_time = datetime.now()
             estimated_finish_time = current_time + timedelta(minutes=estimated_minutes)
 
-            # Format messages for start and estimated finish time
             time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
             estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
 
-            # Detailed message for logging with user_id and requested URL
             log_message = (
                 f"User ID: {user_id}\n"
                 f"Requested URL for transcription: {normalized_url}\n"
             )
 
-            # Prepare and send the detailed message
             language_setting = language if language else "autodetection"
             detailed_message = (
                 f"Whisper model in use:\n{model}\n\n"
@@ -454,13 +444,11 @@ async def process_url_message(message_text, bot, update, model, language):
                 "Transcribing audio..."
             )
 
-            # Concatenate and log the messages for internal records
             logger.info(f"{log_message}")
             logger.info(f"{detailed_message}")
 
             await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
-            # Get the best GPU for transcription
             best_gpu = get_best_gpu()
             if best_gpu:
                 device = f'cuda:{best_gpu.id}'
@@ -473,30 +461,46 @@ async def process_url_message(message_text, bot, update, model, language):
                 device = 'cpu'
                 gpu_message = "No GPU available, using CPU for transcription."
 
-            # Log and send the GPU information to the user
             logger.info(gpu_message)
             await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
 
-            # Transcribe the audio and handle transcription output
-            transcription_paths = await transcribe_audio(audio_path, output_dir, normalized_url, video_info_message, include_header, model, device, language)
+            transcription_paths, raw_content = await transcribe_audio(bot, update, audio_path, output_dir, normalized_url, video_info_message, transcription_settings['include_header'], model, device, language)
 
             if not transcription_paths:
-                # Notify if transcription fails
                 await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")
                 if os.path.exists(audio_path):
                     os.remove(audio_path)
                 continue
 
-            # Send transcription files and finalize the process
             for fmt, path in transcription_paths.items():
                 await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
-            if not keep_audio_files and os.path.exists(audio_path):
+
+            # Add debugging here to see the settings at this point
+            logger.info(f"send_as_messages setting before condition check: {transcription_settings['send_as_messages']}")
+
+            # Here is where we add the transcription_note
+            transcription_note = "📝🔊 <i>(transcribed audio)</i>\n\n"
+            note_length = len(transcription_note)
+            max_message_length = 4096 - note_length  # Adjust max length to account for transcription note
+
+            if transcription_settings['send_as_messages'] and 'txt' in transcription_paths:
+                try:
+                    logger.info(f"Preparing to send plain text message from raw content")
+                    content = transcription_note + raw_content  # Add transcription note to the raw content
+                    for i in range(0, len(content), max_message_length):
+                        await bot.send_message(chat_id=update.effective_chat.id, text=content[i:i+max_message_length], parse_mode='HTML')
+                        logger.info(f"Sent message chunk: {i // max_message_length + 1}")
+                except Exception as e:
+                    logger.error(f"Error in sending plain text message: {e}")
+            else:
+                logger.info("Condition for sending plain text message not met.")
+
+            # Check if we're keeping files or not
+            if not transcription_settings['keep_audio_files'] and os.path.exists(audio_path):
                 os.remove(audio_path)
             
-            # Log the completion message with user ID and video URL
             completion_log_message = f"Translation complete for user {user_id}, video: {normalized_url}, model: {model}"
             logging.info(completion_log_message)
-            await bot.send_message(chat_id=update.effective_chat.id, text="Transcription complete. Have a nice day!")
 
     except Exception as e:
         logger.error(f"An error occurred: {e}")

@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.14.6"
+version_number = "0.15"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -28,14 +28,19 @@ from telegram.ext import CommandHandler
 from transcription_handler import process_url_message, set_user_model, get_whisper_model, transcribe_audio, get_best_gpu, get_audio_duration, estimate_transcription_time, format_duration, get_whisper_language, set_user_language
 from utils.bot_token import get_bot_token
 from utils.utils import print_startup_message
+from config_loader import ConfigLoader  # Import ConfigLoader
 
 # Configure basic logging
 logging.basicConfig(format='[%(asctime)s] %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Read configuration for restart behavior
-config = configparser.ConfigParser()
-config.read('config/config.ini')
+# config = configparser.ConfigParser()
+# config.read('config/config.ini')
+
+# Use ConfigLoader to get configuration
+config = ConfigLoader.get_config()
+
 restart_on_failure = config.getboolean('GeneralSettings', 'RestartOnConnectionFailure', fallback=True)
 
 # Define directories for storing audio messages and files
@@ -62,10 +67,20 @@ class TranscriberBot:
 
         self.restart_on_failure = restart_on_failure  # Controls the restart behavior on connection failure
 
-        self.config = configparser.ConfigParser()
-        self.config.read('config/config.ini')
+        # self.config = configparser.ConfigParser()
+        # self.config.read('config/config.ini')
+        self.config = config  # Use the config from ConfigLoader        
         self.model = self.config.get('WhisperSettings', 'Model', fallback='medium.en')
         self.valid_models = self.config.get('ModelSettings', 'ValidModels', fallback='tiny, base, small, medium, large').split(', ')
+
+        self.transcription_settings = {
+            'includeheaderintranscription': self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription', fallback=True),
+            'keepaudiofiles': self.config.getboolean('TranscriptionSettings', 'keepaudiofiles', fallback=False),
+            'sendasfiles': self.config.getboolean('TranscriptionSettings', 'sendasfiles', fallback=True),
+            'sendasmessages': self.config.getboolean('TranscriptionSettings', 'sendasmessages', fallback=False)
+        }
+
+        logger.info(f"Transcription settings loaded: {self.transcription_settings}")
 
         self.model_change_limits = {}  # Dictionary to track user rate limits
         self.model_change_cooldown = 20  # Cooldown period in seconds
@@ -126,17 +141,15 @@ class TranscriberBot:
                     if language == "auto":
                         language = None
 
+                    video_info_message = ""  # Set a default empty value for video_info_message
+                    ai_transcript_header = ""  # Set a default empty value for ai_transcript_header
+                    transcription_note = "📝🔊 <i>(transcribed audio)</i>\n\n"  # Define transcription note
+
                     if isinstance(task, str) and task.startswith('http'):
                         logger.info(f"Processing URL: {task}")
                         await process_url_message(task, bot, update, model, language)
                     elif task.endswith('.wav') or task.endswith('.mp3'):
                         logger.info(f"Processing audio file: {task}")
-
-                        # # Notify the user about the model and GPU
-                        # if language:
-                        #     await bot.send_message(chat_id=update.effective_chat.id, text=f"Starting transcription with model: {model} and language: {language}")
-                        # else:
-                        #     await bot.send_message(chat_id=update.effective_chat.id, text=f"Starting transcription with model: {model} and language autodetection")
 
                         best_gpu = get_best_gpu()
                         if best_gpu:
@@ -150,11 +163,9 @@ class TranscriberBot:
                             device = 'cpu'
                             gpu_message = "No GPU available, using CPU for transcription."
                         
-                        # Log and send the GPU information to the user
                         logger.info(gpu_message)
                         await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
 
-                        # Inform the user about the estimated time for transcription
                         audio_duration = get_audio_duration(task)
                         if audio_duration is None:
                             await bot.send_message(chat_id=update.effective_chat.id, text="Invalid audio file. Please upload or link to a valid audio file.")
@@ -165,11 +176,9 @@ class TranscriberBot:
                         estimated_time = estimate_transcription_time(model, audio_duration)
                         estimated_minutes = estimated_time / 60  # Convert to minutes for user-friendly display
 
-                        # Calculate estimated finish time
                         current_time = datetime.now()
                         estimated_finish_time = current_time + timedelta(seconds=estimated_time)
 
-                        # Format messages for start and estimated finish time
                         time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
                         estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -187,22 +196,38 @@ class TranscriberBot:
                         logger.info(detailed_message)
                         await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
-                        # Now start the transcription process
-                        transcription_paths = await transcribe_audio(task, self.output_dir, "", "", self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'), model, device, language)
+                        transcription_paths, raw_content = await transcribe_audio(bot, update, task, self.output_dir, "", video_info_message, self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'), model, device, language)
+
+                        logger.info(f"Transcription paths returned: {transcription_paths}")
+
                         if not transcription_paths:
-                            # Notify if transcription fails
                             await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")
                             if os.path.exists(task):
                                 os.remove(task)
                             continue
 
-                        # Send transcription files and finalize the process
-                        for fmt, path in transcription_paths.items():
-                            try:
-                                await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
-                                logger.info(f"Sent {fmt} file to user {user_id}: {path}")
-                            except Exception as e:
-                                logger.error(f"Failed to send {fmt} file to user {user_id}: {path}, error: {e}")
+                        # Send files if configured to do so
+                        if self.config.getboolean('TranscriptionSettings', 'sendasfiles'):
+                            for fmt, path in transcription_paths.items():
+                                try:
+                                    await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
+                                    logger.info(f"Sent {fmt} file to user {user_id}: {path}")
+                                except Exception as e:
+                                    logger.error(f"Failed to send {fmt} file to user {user_id}: {path}, error: {e}")
+
+                        # Send plain text as messages if configured to do so
+                        if self.config.getboolean('TranscriptionSettings', 'sendasmessages') and 'txt' in transcription_paths:
+                            file_path = transcription_paths['txt']
+                            with open(file_path, 'r') as f:
+                                content = f.read()
+                                if self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'):
+                                    ai_transcript_header = f"[ Transcript generated with: https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/ | OpenAI Whisper model: `{model}` | Language: `{language}` ]"
+                                    header_content = f"{video_info_message}\n\n{ai_transcript_header}\n\n"
+                                    content = content[len(header_content):]
+                                content = transcription_note + content  # Add transcription note
+                                for i in range(0, len(content), 4096):
+                                    await bot.send_message(chat_id=update.effective_chat.id, text=content[i:i+4096], parse_mode='HTML')
+                                    logger.info(f"Sent message chunk: {i // 4096 + 1}")
 
                         if not self.config.getboolean('TranscriptionSettings', 'keepaudiofiles'):
                             try:
@@ -216,7 +241,7 @@ class TranscriberBot:
                 finally:
                     self.task_queue.task_done()
                     await bot.send_message(chat_id=update.effective_chat.id, text="Transcription complete. Have a nice day!")
-                logger.info(f"Task completed for user ID {user_id}: {task}")
+                    logger.info(f"Task completed for user ID {user_id}: {task}")
 
     async def shutdown(self, signal, loop):
         """Cleanup tasks tied to the service's shutdown."""

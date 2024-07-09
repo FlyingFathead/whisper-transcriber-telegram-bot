@@ -92,6 +92,10 @@ After launching the bot, you can interact with it via Telegram:
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.15 - added `config.ini` options `sendasfiles` and `sendasmessages`
+   - can be set to `true` or `false` depending on your preferences
+   - `sendasmessages` (when set to `true`) sends the transcripts as Telegram messages in chat
+   - `sendasfiles` (when set to `true`) sends the transcripts as `.stt`, `.vtt` and `.txt`
 - v0.14.6 - fixed occasional queue hangs with sent audio files (wav/mp3)
 - v0.14.5 - fixed following the "keep/don't keep audio files" config rule
 - v0.14.4 - added the `/info` command for viewing current settings & queue status
