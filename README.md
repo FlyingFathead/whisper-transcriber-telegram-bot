@@ -12,17 +12,17 @@ The bot supports a broad range of media sites via `yt-dlp` ([listed here](https:
 
 ## Features
 
-- 🎥 Downloads and processes media URLs from any source supported by `yt-dlp`
-   - [(list of supported sites)](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
-- 📲 Can receive Telegram audio messages as well as .mp3 and .wav files for transcription
-- 🤖 Uses a local Whisper model from the `openai-whisper` package for transcription (no API required!)
-- 🖥️ Automatically uses `GPUtil` to map out the best available CUDA-enabled local GPU
-   - (auto-switching to CPU-only mode if no CUDA GPU is available)
-- 📝 Transcribes audio using OpenAI's Whisper model (can be user-selected with `/model`)
-   - (see [openai/whisper](https://github.com/openai/whisper/) for more info on Whisper)
-- 📄 Returns transcription in text, SRT, and VTT formats
-- 🔄 Handles concurrent transcription requests efficiently with async & task queuing
-- 🕒 Features an automatic queue system to manage multiple transcription requests seamlessly
+- 🎥 Downloads and processes media URLs from any source supported by `yt-dlp`.
+- 📲 Can receive Telegram audio messages as well as .mp3 and .wav files for transcription.
+- 🤖 Uses a local Whisper model from the `openai-whisper` package for transcription.
+   - _(no API required, use your own PC & available CUDA GPU!)_
+- 🖥️ Automatically uses `GPUtil` to map out the best available CUDA-enabled local GPU.
+   - _(auto-switching to CPU-only mode if no CUDA GPU is available)_
+- 📝 Transcribes audio using OpenAI's Whisper model (can be user-selected with `/model`).
+   - _(see [openai/whisper](https://github.com/openai/whisper/) for more info on Whisper)_
+- 📄 Returns transcription in text, SRT, and VTT formats.
+- 🔄 Handles concurrent transcription requests efficiently with async & task queuing.
+- 🕒 Features an automatic queue system to manage multiple transcription requests seamlessly.
 
 ## Installation
 
