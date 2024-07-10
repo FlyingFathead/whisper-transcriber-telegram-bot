@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.15"
+version_number = "0.16"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -19,6 +19,7 @@ import os
 import subprocess
 import datetime
 from datetime import datetime, timedelta
+from collections import defaultdict
 
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, CallbackContext
@@ -70,6 +71,13 @@ class TranscriberBot:
         # self.config = configparser.ConfigParser()
         # self.config.read('config/config.ini')
         self.config = config  # Use the config from ConfigLoader        
+
+        # get cooldown settings
+        self.cooldown_seconds = self.config.getint('RateLimitSettings', 'cooldown_seconds', fallback=10)
+        self.max_requests_per_minute = self.config.getint('RateLimitSettings', 'max_requests_per_minute', fallback=5)
+        self.user_last_request = defaultdict(lambda: datetime.min)
+        self.user_request_counts = defaultdict(int)
+
         self.model = self.config.get('WhisperSettings', 'Model', fallback='medium.en')
         self.valid_models = self.config.get('ModelSettings', 'ValidModels', fallback='tiny, base, small, medium, large').split(', ')
 
@@ -97,10 +105,29 @@ class TranscriberBot:
 
         # Log the received message along with the user ID
         logger.info(f"Received a message from user ID {user_id}: {message_text}")
-        
+
+        # Cooldown logic
+        now = datetime.now()
+        last_request_time = self.user_last_request[user_id]
+        if (now - last_request_time).seconds < self.cooldown_seconds:
+            await update.message.reply_text(f"Please wait {self.cooldown_seconds - (now - last_request_time).seconds} seconds before making another request.")
+            return
+
+        # Rate limiting logic
+        minute_ago = now - timedelta(minutes=1)
+        if self.user_request_counts[user_id] >= self.max_requests_per_minute and last_request_time > minute_ago:
+            await update.message.reply_text("You have reached the maximum number of requests per minute. Please try again later.")
+            return
+
+        # Update request count and last request time
+        if last_request_time < minute_ago:
+            self.user_request_counts[user_id] = 0  # Reset the count if the last request was over a minute ago
+
+        self.user_request_counts[user_id] += 1
+        self.user_last_request[user_id] = now
+
         # Check and log the model before starting transcription
         current_model = get_whisper_model(user_id)
-
         logger.debug(f"Current model for user {user_id} before transcription: {current_model}")
 
         if update.message and update.message.text:
