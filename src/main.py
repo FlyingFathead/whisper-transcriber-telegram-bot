@@ -233,15 +233,6 @@ class TranscriberBot:
                                 os.remove(task)
                             continue
 
-                        # Send files if configured to do so
-                        if self.config.getboolean('TranscriptionSettings', 'sendasfiles'):
-                            for fmt, path in transcription_paths.items():
-                                try:
-                                    await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
-                                    logger.info(f"Sent {fmt} file to user {user_id}: {path}")
-                                except Exception as e:
-                                    logger.error(f"Failed to send {fmt} file to user {user_id}: {path}, error: {e}")
-
                         # Send plain text as messages if configured to do so
                         if self.config.getboolean('TranscriptionSettings', 'sendasmessages') and 'txt' in transcription_paths:
                             file_path = transcription_paths['txt']
@@ -255,6 +246,15 @@ class TranscriberBot:
                                 for i in range(0, len(content), 4096):
                                     await bot.send_message(chat_id=update.effective_chat.id, text=content[i:i+4096], parse_mode='HTML')
                                     logger.info(f"Sent message chunk: {i // 4096 + 1}")
+
+                        # Send files if configured to do so
+                        if self.config.getboolean('TranscriptionSettings', 'sendasfiles'):
+                            for fmt, path in transcription_paths.items():
+                                try:
+                                    await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
+                                    logger.info(f"Sent {fmt} file to user {user_id}: {path}")
+                                except Exception as e:
+                                    logger.error(f"Failed to send {fmt} file to user {user_id}: {path}, error: {e}")
 
                         if not self.config.getboolean('TranscriptionSettings', 'keepaudiofiles'):
                             try:
