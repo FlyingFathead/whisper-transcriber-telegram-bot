@@ -22,7 +22,7 @@ The bot supports a broad range of media sites via `yt-dlp` ([listed here](https:
    - _(see [openai/whisper](https://github.com/openai/whisper/) for more info on Whisper)_
 - 📄 Returns transcription in text, SRT, and VTT formats.
 - 🔄 Handles concurrent transcription requests efficiently with async & task queuing.
-- 🕒 Features an automatic queue system to manage multiple transcription requests seamlessly.
+- 🕒 Features an asynchronous automatic queue system to manage multiple transcription requests seamlessly.
 
 ## Installation
 
