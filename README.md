@@ -94,6 +94,7 @@ After launching the bot, you can interact with it via Telegram:
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1601 - process order fixes for transcripts (send as msg <> file)
 - v0.16 - added configurable cooldowns & rate limits, see `config.ini`:
    - under `[RateLimitSettings]`: `cooldown_seconds`, `max_requests_per_minute`
 - v0.15 - added `config.ini` options `sendasfiles` and `sendasmessages`

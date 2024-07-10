@@ -472,9 +472,6 @@ async def process_url_message(message_text, bot, update, model, language):
                     os.remove(audio_path)
                 continue
 
-            for fmt, path in transcription_paths.items():
-                await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
-
             # Add debugging here to see the settings at this point
             logger.info(f"send_as_messages setting before condition check: {transcription_settings['send_as_messages']}")
 
@@ -494,6 +491,16 @@ async def process_url_message(message_text, bot, update, model, language):
                     logger.error(f"Error in sending plain text message: {e}")
             else:
                 logger.info("Condition for sending plain text message not met.")
+
+            # Sending files if configured
+            if transcription_settings['send_as_files']:
+                for fmt, path in transcription_paths.items():
+                    try:
+                        with open(path, 'rb') as file:
+                            await bot.send_document(chat_id=update.effective_chat.id, document=file)
+                        logger.info(f"Sent {fmt} file to user {update.effective_chat.id}: {path}")
+                    except Exception as e:
+                        logger.error(f"Failed to send {fmt} file to user {update.effective_chat.id}: {path}, error: {e}")
 
             # Check if we're keeping files or not
             if not transcription_settings['keep_audio_files'] and os.path.exists(audio_path):
