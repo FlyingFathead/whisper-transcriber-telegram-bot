@@ -227,7 +227,6 @@ async def download_audio(url, output_path):
     command = [
         "yt-dlp",
         "--extract-audio",
-        # "--quiet",  # Add quiet flags to suppress output
         "--audio-format", "mp3",
         "--cache-dir", cache_dir,  # Specify the custom cache directory
         url,
@@ -240,7 +239,6 @@ async def download_audio(url, output_path):
     # Initialize an empty buffer and set the initial time marker
     output_buffer = ''
     last_log_time = time.time()
-    # log_interval = 10  # seconds
     log_interval = get_logging_settings()  # Replace the hardcoded value
 
     while True:
@@ -265,13 +263,27 @@ async def download_audio(url, output_path):
     # Check for any error output
     stderr = await process.stderr.read()
     if stderr:
-        logger.error(f"yt-dlp stderr: {stderr.decode().strip()}")
+        stderr_message = stderr.decode().strip()
+
+        # Check for specific error messages related to cookies or rate limits
+        if "cookies" in stderr_message.lower() or "429" in stderr_message.lower():
+            custom_error_message = (
+                "YouTube is blocking the download due to missing cookies or excessive requests. "
+                "You can try one of the following: choose a different video, upload the audio file separately, "
+                "try again later, or use a session cookie for access "
+                "if you are the administrator of this bot."
+            )
+            logger.error(f"Error: {custom_error_message}")
+            raise Exception(custom_error_message)
+
+        # Log any other errors
+        logger.error(f"yt-dlp stderr: {stderr_message}")
 
     # Verify the download success
     if os.path.exists(output_path):
         logger.info(f"Audio downloaded successfully: {output_path}")
     else:
-        logger.error(f"Failed to download audio: {output_path}")
+        raise Exception(f"Failed to download audio: {output_path}")
 
 # Read from stream line by line until EOF, call callback on each line.
 async def read_stream(stream, callback):
