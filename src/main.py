@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1601"
+version_number = "0.1602"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 # Use ConfigLoader to get configuration
 config = ConfigLoader.get_config()
-
+notification_settings = ConfigLoader.get_notification_settings()
 restart_on_failure = config.getboolean('GeneralSettings', 'RestartOnConnectionFailure', fallback=True)
 
 # Define directories for storing audio messages and files
@@ -267,8 +267,12 @@ class TranscriberBot:
                     logger.error(f"An error occurred while processing the task: {e}")
                 finally:
                     self.task_queue.task_done()
-                    await bot.send_message(chat_id=update.effective_chat.id, text="Transcription complete. Have a nice day!")
-                    logger.info(f"Task completed for user ID {user_id}: {task}")
+
+                    # Check if completion message should be sent
+                    if notification_settings['send_completion_message']:
+                        completion_message = notification_settings['completion_message']
+                        await bot.send_message(chat_id=update.effective_chat.id, text=completion_message)
+                        logger.info(f"Sent completion message to user ID {user_id}: {completion_message}")
 
     async def shutdown(self, signal, loop):
         """Cleanup tasks tied to the service's shutdown."""

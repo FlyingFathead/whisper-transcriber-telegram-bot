@@ -1,5 +1,5 @@
 # config_loader.py 
-# (update to include RateLimitSettings)
+# (update to include RateLimitSettings and NotificationSettings)
 
 import configparser
 import os
@@ -33,6 +33,18 @@ class ConfigLoader:
             cls()
         return cls._config
 
-# Usage:
+    # NEW: Method to get Notification Settings
+    @classmethod
+    def get_notification_settings(cls):
+        config = cls.get_config()  # Get the config object
+        send_completion_message = config.getboolean('NotificationSettings', 'sendcompletionmessage', fallback=True)
+        completion_message = config.get('NotificationSettings', 'completionmessage', fallback="Transcription complete. Have a nice day!")
+        
+        return {
+            'send_completion_message': send_completion_message,
+            'completion_message': completion_message
+        }
+
+# Usage example:
 # from config_loader import ConfigLoader
-# config = ConfigLoader.get_config()
+# notification_settings = ConfigLoader.get_notification_settings()
