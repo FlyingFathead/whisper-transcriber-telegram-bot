@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1603"
+version_number = "0.165"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -24,6 +24,7 @@ from collections import defaultdict
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, CallbackContext
 from telegram.ext import CommandHandler
+from telegram.ext.filters import MessageFilter
 
 # Adjust import paths based on new structure
 from transcription_handler import process_url_message, set_user_model, get_whisper_model, transcribe_audio, get_best_gpu, get_audio_duration, estimate_transcription_time, format_duration, get_whisper_language, set_user_language
@@ -51,6 +52,17 @@ os.makedirs(audio_messages_dir, exist_ok=True)
 # Initialize the lock outside of your function to ensure it's shared across all invocations.
 queue_lock = asyncio.Lock()
 
+class AllowedFileFilter(filters.MessageFilter):
+    def __init__(self, allowed_formats):
+        super().__init__()
+        self.allowed_extensions = [fmt.lower().strip() for fmt in allowed_formats]
+
+    def filter(self, message):
+        if message.document:
+            file_extension = message.document.file_name.split('.')[-1].lower()
+            return file_extension in self.allowed_extensions
+        return False
+
 class TranscriberBot:
 
     # version of this program
@@ -77,6 +89,10 @@ class TranscriberBot:
         self.max_requests_per_minute = self.config.getint('RateLimitSettings', 'max_requests_per_minute', fallback=5)
         self.user_last_request = defaultdict(lambda: datetime.min)
         self.user_request_counts = defaultdict(int)
+
+        # Load the allowed formats from the configuration
+        self.allowed_formats = self.config.get('AllowedFileFormats', 'allowed_formats', fallback='mp3, wav, mp4').split(',')
+        self.allowed_formats = [fmt.lower().strip() for fmt in self.allowed_formats]
 
         self.model = self.config.get('WhisperSettings', 'Model', fallback='medium.en')
         self.valid_models = self.config.get('ModelSettings', 'ValidModels', fallback='tiny, base, small, medium, large').split(', ')
@@ -175,8 +191,8 @@ class TranscriberBot:
                     if isinstance(task, str) and task.startswith('http'):
                         logger.info(f"Processing URL: {task}")
                         await process_url_message(task, bot, update, model, language)
-                    elif task.endswith('.wav') or task.endswith('.mp3'):
-                        logger.info(f"Processing audio file: {task}")
+                    elif any(task.endswith(f'.{ext}') for ext in self.allowed_formats):
+                        logger.info(f"Processing audio/video file: {task}")
 
                         best_gpu = get_best_gpu()
                         if best_gpu:
@@ -312,35 +328,62 @@ class TranscriberBot:
     # view help
     async def help_command(self, update: Update, context: CallbackContext) -> None:
         models_list = ', '.join(self.valid_models)  # Dynamically generate the list of valid models
+        allowed_formats_list = ', '.join(self.allowed_formats)  # Get the list of allowed formats
+
+        # Access the 'allowaudiofiles' and 'allowvoicemessages' settings
+        allow_audio_files = self.config.getboolean('AudioSettings', 'allowaudiofiles', fallback=True)
+        allow_voice_messages = self.config.getboolean('AudioSettings', 'allowvoicemessages', fallback=True)
+
+        # Build the file upload info based on settings
+        file_upload_info = ""
+        if allow_audio_files and allow_voice_messages:
+            file_upload_info = (
+                "- Or, send an audio message or an audio file to have its audio transcribed.\n\n"
+                f"<b>Currently supported file formats:</b> {allowed_formats_list}\n"
+            )
+        elif allow_audio_files and not allow_voice_messages:
+            file_upload_info = (
+                "- Or, send an audio file to have its audio transcribed.\n\n"
+                f"<b>Currently supported file formats:</b> {allowed_formats_list}\n"
+            )
+        elif not allow_audio_files and allow_voice_messages:
+            file_upload_info = (
+                "- Or, send an audio message to have its audio transcribed.\n"
+                "- Note: Direct file uploads are currently disabled.\n"
+            )
+        else:
+            file_upload_info = (
+                "- Note: Direct file uploads and audio messages are currently disabled.\n"
+            )
+
         help_text = f"""<b>Welcome to the Whisper Transcriber Bot!</b>
 
-<b>Version:</b> {self.version_number}
+    <b>Version:</b> {self.version_number}
 
-<b>How to Use:</b>
-- Send any supported media URL to have its audio transcribed.
-- (Optional) Send an audio message or a wav/mp3 file to have its audio transcribed.
+    <b>How to Use:</b>
+    - Send any supported media URL to have its audio transcribed.
+    {file_upload_info}
+    - Use /info to view the current settings, status, and jobs in queue.
+    - Use /model to change the transcription model.
+    - Use /language to change the model language in use
+    (set language to <code>auto</code> for automatic language detection).
 
-- Use /info to view the current settings, status and jobs in queue
-- Use /model to change the transcription model.
-- Use /language to change the model language in use
-  (set language to <code>auto</code> for automatic language detection)
+    <i>TIP: Setting the language manually to the audio's language may improve accuracy and speed.</i>
 
-<i>TIP: setting the language manually to the audio's language may improve accuracy and speed.</i>
+    - Use /help or /about to display this help message.
 
-- Use /help or /about to display this help message.
+    <b>Whisper model currently in use:</b>
+    <code>{self.model}</code>
 
-<b>Whisper model currently in use:</b>
-<code>{self.model}</code>
+    <b>Available Whisper models:</b>
+    {models_list}
 
-<b>Available Whisper models:</b>
-{models_list}
+    <b>Bot code by FlyingFathead.</b>
+    Source code on <a href='https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/'>GitHub</a>.
 
-<b>Bot code by FlyingFathead.</b>
-Source code on <a href='https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/'>GitHub</a>.
-
-<b>Disclaimer:</b>
-The original author is NOT responsible for how this bot is utilized. All code and outputs are provided 'AS IS' without warranty of any kind. Users assume full responsibility for the operation and output of the bot. This applies to both legal and ethical responsibilities. Use at your own risk.
-"""
+    <b>Disclaimer:</b>
+    The original author is NOT responsible for how this bot is utilized. All code and outputs are provided 'AS IS' without warranty of any kind. Users assume full responsibility for the operation and output of the bot. This applies to both legal and ethical responsibilities. Use at your own risk.
+    """
         await update.message.reply_text(help_text, parse_mode='HTML')
 
     async def model_command(self, update: Update, context: CallbackContext) -> None:
@@ -407,31 +450,66 @@ The original author is NOT responsible for how this bot is utilized. All code an
             logger.error(f"Error converting voice message: {e}")
 
     async def handle_audio_file(self, update: Update, context: CallbackContext) -> None:
+        logger.info("handle_audio_file called.")
+
         user_id = update.effective_user.id
-        audio = update.message.audio
+
+        # Check if file uploads are allowed
+        allow_audio_files = self.config.getboolean('AudioSettings', 'allowaudiofiles', fallback=True)
+        logger.info(f"allow_audio_files: {allow_audio_files}")
+        if not allow_audio_files:
+            await update.message.reply_text("File processing is not allowed.")
+            logger.info("File processing is not allowed according to config.")
+            return
+
+        # Determine whether the message contains a document or an audio
         document = update.message.document
+        audio = update.message.audio
 
-        if not self.config.getboolean('AudioSettings', 'allowaudiofiles'):
-            await update.message.reply_text("Audio files are not allowed.")
-            return
-
-        if audio:
-            file = await context.bot.get_file(audio.file_id)
-            file_path = os.path.join(audio_messages_dir, f'{audio.file_id}.mp3')
-        elif document and document.mime_type in ['audio/mpeg', 'audio/x-wav', 'audio/wav', 'audio/mp3']:
-            file = await context.bot.get_file(document.file_id)
-            file_path = os.path.join(audio_messages_dir, document.file_name)
+        if document:
+            file_info = document
+            file_name = document.file_name
+            logger.info(f"Received a document from user {user_id}: {file_name}")
+        elif audio:
+            file_info = audio
+            file_name = audio.file_name or f"{audio.file_unique_id}.mp3"
+            logger.info(f"Received an audio file from user {user_id}: {file_name}")
         else:
-            await update.message.reply_text("Unsupported file format. Please send MP3 or WAV files.")
+            logger.info("No document or audio found in the message.")
             return
 
-        await file.download_to_drive(file_path)
-        
-        await self.task_queue.put((file_path, context.bot, update))
-        queue_length = self.task_queue.qsize()
-        response_text = "Your request is next and is currently being processed." if queue_length == 1 else f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
-        await update.message.reply_text(response_text)
+        try:
+            file_extension = file_name.split('.')[-1].lower()
+            logger.info(f"Extracted file extension: {file_extension}")
+            logger.info(f"Allowed formats: {self.allowed_formats}")
 
+            if file_extension not in self.allowed_formats:
+                await update.message.reply_text(
+                    f"Files with extension .{file_extension} are not supported.\n"
+                    f"Supported formats are: {', '.join(self.allowed_formats)}"
+                )
+                logger.info("File extension not in allowed formats.")
+                return
+
+            # Proceed with downloading and processing the file
+            file = await context.bot.get_file(file_info.file_id)
+            file_path = os.path.join(audio_messages_dir, f'{file_info.file_unique_id}.{file_extension}')
+            await file.download_to_drive(file_path)
+            logger.info(f"File downloaded to {file_path}")
+
+            # Queue the file for transcription
+            await self.task_queue.put((file_path, context.bot, update))
+            queue_length = self.task_queue.qsize()
+            response_text = (
+                "Your request is next and is currently being processed."
+                if queue_length == 1
+                else f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
+            )
+            await update.message.reply_text(response_text)
+            logger.info(f"File queued for transcription. Queue length: {queue_length}")
+        except Exception as e:
+            logger.error(f"Exception in handle_audio_file: {e}")
+            await update.message.reply_text("An error occurred while processing your file.")
 
     async def info_command(self, update: Update, context: CallbackContext) -> None:
         user_id = update.effective_user.id
@@ -471,32 +549,19 @@ The original author is NOT responsible for how this bot is utilized. All code an
             try:
                 self.application = Application.builder().token(self.token).build()
 
-                # Adding handlers
-                text_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
-                voice_handler = MessageHandler(filters.VOICE, self.handle_voice_message)
-                audio_handler = MessageHandler(
-                    filters.AUDIO | 
-                    filters.Document.FileExtension("mp3") | 
-                    filters.Document.FileExtension("wav") | 
-                    filters.Document.Category("audio"), 
-                    self.handle_audio_file
-                )
+                # Add command handlers first
+                self.application.add_handler(CommandHandler(['help', 'about'], self.help_command))
+                self.application.add_handler(CommandHandler('info', self.info_command))
+                self.application.add_handler(CommandHandler('model', self.model_command))
+                self.application.add_handler(CommandHandler('language', self.set_language_command))
 
-                self.application.add_handler(text_handler)
-                self.application.add_handler(voice_handler)
-                self.application.add_handler(audio_handler)
+                # Add specific message handlers next
+                self.application.add_handler(MessageHandler(filters.AUDIO, self.handle_audio_file))
+                self.application.add_handler(MessageHandler(filters.VOICE, self.handle_voice_message))
+                self.application.add_handler(MessageHandler(filters.Document.ALL, self.handle_audio_file))
 
-                help_handler = CommandHandler(['help', 'about'], self.help_command)
-                self.application.add_handler(help_handler)
-
-                info_handler = CommandHandler('info', self.info_command)
-                self.application.add_handler(info_handler)
-
-                model_handler = CommandHandler('model', self.model_command)
-                self.application.add_handler(model_handler)
-
-                language_handler = CommandHandler('language', self.set_language_command)
-                self.application.add_handler(language_handler)
+                # Add generic message handler last
+                self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
                 loop.create_task(self.process_queue())
                 self.application.run_polling()
