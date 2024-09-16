@@ -24,3 +24,6 @@ audio/
 *.mp3
 *.vtt
 *.srt
+
+# virtual environments
+venv/

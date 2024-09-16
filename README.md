@@ -24,7 +24,7 @@ The bot supports a broad range of media sites via `yt-dlp` ([listed here](https:
 - 🔄 Handles concurrent transcription requests efficiently with async & task queuing.
 - 🕒 Features an asynchronous automatic queue system to manage multiple transcription requests seamlessly.
 
-## Installation
+## Installation (non-Docker version)
 
 To set up the Whisper Transcriber Telegram Bot, follow these steps:
 
@@ -39,9 +39,36 @@ To set up the Whisper Transcriber Telegram Bot, follow these steps:
    pip install -r requirements.txt
    ```
 
-3. Set up your Telegram bot token either in `config/bot_token.txt` or as an environment variable `TELEGRAM_BOT_TOKEN`.
+3. Install [ffmpeg](https://ffmpeg.org) (required for media processing):
 
-4. Run the bot:
+   On Ubuntu or Debian tree Linux:
+   ```bash
+   sudo apt update && sudo apt install ffmpeg
+   ```
+
+   On Arch Linux:   
+   ```bash
+   sudo pacman -S ffmpeg
+   ```
+
+   On macOS using Homebrew:
+   ```bash
+   brew install ffmpeg
+   ```
+
+   On Windows using Chocolatey:
+   ```bash
+   choco install ffmpeg
+   ```
+   
+   On Windows using Scoop:   
+   ```bash
+   scoop install ffmpeg
+   ```
+
+4. Set up your Telegram bot token either in `config/bot_token.txt` or as an environment variable `TELEGRAM_BOT_TOKEN`.
+
+5. Run the bot:
    ```bash
    python src/main.py
    ```
