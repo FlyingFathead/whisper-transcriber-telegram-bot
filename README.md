@@ -13,7 +13,7 @@ The bot supports a broad range of media sites via `yt-dlp` ([listed here](https:
 ## Features
 
 - 🎥 Downloads and processes media URLs from any source supported by `yt-dlp`.
-- 📲 Can receive Telegram audio messages as well as files in i.e. `.mp3` and `.wav` (and other `ffmpeg` supported) formats for transcription.
+- 📲 Can receive Telegram audio messages as well as files in i.e. `.mp3` and `.wav` (+ other `ffmpeg` supported) formats for transcription.
 - 🤖 Uses a local Whisper model from the `openai-whisper` package for transcription.
    - _(no API required, use your own PC & available CUDA GPU!)_
 - 🖥️ Automatically uses `GPUtil` to map out the best available CUDA-enabled local GPU.
