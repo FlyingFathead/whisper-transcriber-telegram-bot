@@ -121,6 +121,7 @@ After launching the bot, you can interact with it via Telegram:
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1653 - even more exception and error catching, especially for YouTube URLs
 - v0.1652 - maximum file size checks (20MB) as per to Telegram API
 - v0.1651 - improved parsing for Youtube URLs, better error handling
 - v0.165 - select allowed audio types if transcription from audio files is enabled

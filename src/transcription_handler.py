@@ -408,9 +408,6 @@ async def process_url_message(message_text, bot, update, model, language):
                 await bot.send_message(chat_id=update.effective_chat.id, text="Unsupported URL format. Currently, only YouTube URLs are fully supported.")
                 continue
 
-            # Skip URL normalization
-            # normalized_url = url  # Use the URL directly without normalization
-
             # Normalize YouTube URL if it's a YouTube URL
             if "youtube" in url or "youtu.be" in url:
                 normalized_url = normalize_youtube_url(url)
@@ -428,25 +425,38 @@ async def process_url_message(message_text, bot, update, model, language):
             audio_path = os.path.join(audio_dir, audio_file_name)
             video_info_message = "Transcription initiated."
 
-            logger.info("Fetching video details...")
-            details = await fetch_video_details(normalized_url)
-            if details:
+            # Wrap fetch_video_details in try-except
+            try:
+                logger.info("Fetching video details...")
+                details = await fetch_video_details(normalized_url)
                 details['video_url'] = normalized_url
                 video_info_message = create_video_info_message(details)
                 for part in split_message(video_info_message):
                     await bot.send_message(chat_id=update.effective_chat.id, text=f"<code>{part}</code>", parse_mode='HTML')
-            else:
-                logger.error("Failed to fetch video details.")
+            except Exception as e:
+                error_message = str(e)
+                logger.error(f"An error occurred while fetching video details: {error_message}")
+                await bot.send_message(chat_id=update.effective_chat.id, text=f"Error: {error_message}")
+                continue  # Skip to the next URL if any
 
             await bot.send_message(chat_id=update.effective_chat.id, text="Fetching the audio track...")
-            await download_audio(normalized_url, audio_path)
+
+            # Wrap download_audio in try-except
+            try:
+                await download_audio(normalized_url, audio_path)
+            except Exception as e:
+                error_message = str(e)
+                await bot.send_message(chat_id=update.effective_chat.id, text=f"Error: {error_message}")
+                logger.error(f"Download audio failed for URL: {normalized_url}, error: {error_message}")
+                continue
+
             if not os.path.exists(audio_path):
                 logger.info(f"Audio download failed for URL: {normalized_url}")
                 await bot.send_message(chat_id=update.effective_chat.id, text="Failed to download audio. Please ensure the URL is correct and points to a supported video.")
                 continue
 
             model = get_whisper_model(user_id)
-            audio_duration = details['audio_duration']
+            audio_duration = details.get('audio_duration', 0)
             estimated_time = estimate_transcription_time(model, audio_duration)
             estimated_minutes = estimated_time / 60
             current_time = datetime.now()
@@ -490,7 +500,10 @@ async def process_url_message(message_text, bot, update, model, language):
             logger.info(gpu_message)
             await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
 
-            transcription_paths, raw_content = await transcribe_audio(bot, update, audio_path, output_dir, normalized_url, video_info_message, transcription_settings['include_header'], model, device, language)
+            transcription_paths, raw_content = await transcribe_audio(
+                bot, update, audio_path, output_dir, normalized_url, video_info_message,
+                transcription_settings['include_header'], model, device, language
+            )
 
             if not transcription_paths:
                 await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")
@@ -581,6 +594,8 @@ async def fetch_video_details(url, max_retries=3, base_delay=5, command_timeout=
                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
                "--dump-json", url]
 
+    last_stderr_output = ""
+
     for attempt in range(max_retries):
         try:
             process = await asyncio.create_subprocess_exec(
@@ -592,31 +607,55 @@ async def fetch_video_details(url, max_retries=3, base_delay=5, command_timeout=
             try:
                 # Set a timeout for the command execution
                 stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=command_timeout)
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 logger.error(f"yt-dlp command timed out after {command_timeout} seconds")
                 process.kill()
                 await process.wait()
                 stdout, stderr = None, b"Command timed out"
 
             if stderr and process.returncode != 0:
-                logger.warning(f"Attempt {attempt + 1} failed: {stderr.decode()}")
+                stderr_output = stderr.decode()
+                last_stderr_output = stderr_output  # Save the last stderr output
+                logger.warning(f"Attempt {attempt + 1} failed: {stderr_output}")
                 if attempt < max_retries - 1:
                     wait_time = base_delay * (2 ** attempt)
                     logger.info(f"Retrying after {wait_time} seconds...")
                     await asyncio.sleep(wait_time)
                 else:
                     logger.error("All retry attempts failed.")
-                    return None
+                    # Check for specific error messages
+                    if any(keyword in last_stderr_output for keyword in [
+                        "Sign in to confirm you're not a bot",
+                        "unable to extract initial player response",
+                        "This video is unavailable",
+                        "ERROR:"
+                    ]):
+                        custom_error_message = (
+                            "Failed to fetch video details due to YouTube's anti-bot measures or video restrictions. "
+                            "Possible reasons include age restrictions, region locks, or the video requiring sign-in. "
+                            "Please try a different video URL, or see type /help for supported file formats for delivery. "
+                            "If you are the administrator of this service, consider using cookies with `yt-dlp`."
+                        )
+                        raise Exception(custom_error_message)
+                    else:
+                        raise Exception(f"Failed to fetch video details: {last_stderr_output}")
             else:
                 try:
                     video_details = json.loads(stdout.decode()) if stdout else {}
                     return process_video_details(video_details, url)
                 except json.JSONDecodeError as e:
                     logger.error(f"Error decoding JSON from yt-dlp output: {e}")
-                    return None
+                    raise Exception(f"Error decoding JSON from yt-dlp output: {e}")
         except Exception as e:
             logger.error(f"An unexpected error occurred: {e}")
-            return None
+            # If this was the last attempt, re-raise the exception
+            if attempt >= max_retries - 1:
+                raise
+            else:
+                # Otherwise, log and retry
+                wait_time = base_delay * (2 ** attempt)
+                logger.info(f"Retrying after {wait_time} seconds...")
+                await asyncio.sleep(wait_time)
 
 # process the video details for included information
 def process_video_details(video_details, url):
