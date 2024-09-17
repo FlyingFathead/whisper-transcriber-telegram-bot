@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1651"
+version_number = "0.1652"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -338,17 +338,17 @@ class TranscriberBot:
         file_upload_info = ""
         if allow_audio_files and allow_voice_messages:
             file_upload_info = (
-                "- Or, send an audio message or an audio file to have its audio transcribed.\n\n"
+                "- Or, send an audio message or an audio file to have its audio transcribed. (maximum file size: 20MB)\n\n"
                 f"<b>Currently supported file formats:</b> {allowed_formats_list}\n"
             )
         elif allow_audio_files and not allow_voice_messages:
             file_upload_info = (
-                "- Or, send an audio file to have its audio transcribed.\n\n"
+                "- Or, send an audio file to have its audio transcribed. (maximum file size: 20MB)\n\n"
                 f"<b>Currently supported file formats:</b> {allowed_formats_list}\n"
             )
         elif not allow_audio_files and allow_voice_messages:
             file_upload_info = (
-                "- Or, send an audio message to have its audio transcribed.\n"
+                "- Or, send an audio message to have its audio transcribed. (maximum file size: 20MB)\n"
                 "- Note: Direct file uploads are currently disabled.\n"
             )
         else:
@@ -479,6 +479,17 @@ class TranscriberBot:
             return
 
         try:
+            # Check file size before downloading
+            file_size = file_info.file_size
+            if file_size > 20 * 1024 * 1024:  # 20 MB in bytes
+                await update.message.reply_text(
+                    "The file is too large to process. "
+                    "Telegram bots can only download files up to 20 MB in size. "
+                    "Please send a smaller file or provide a link to the audio."
+                )
+                logger.warning(f"File is too big: {file_size} bytes.")
+                return
+
             file_extension = file_name.split('.')[-1].lower()
             logger.info(f"Extracted file extension: {file_extension}")
             logger.info(f"Allowed formats: {self.allowed_formats}")

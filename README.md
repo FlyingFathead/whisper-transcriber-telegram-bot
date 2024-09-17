@@ -117,10 +117,11 @@ After launching the bot, you can interact with it via Telegram:
 
 - `/info` to view current settings, uptime, GPU info and queue status
 - `/help` and `/about` - get help on bot use, list version number, available models and commands, etc.
-- `/model` - view the model in use or change to another available model.
+- `/model` - view the model in usedef process_url or change to another available model.
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1652 - maximum file size checks (20MB) as per to Telegram API
 - v0.1651 - improved parsing for Youtube URLs, better error handling
 - v0.165 - select allowed audio types if transcription from audio files is enabled
    - (default formats: `mp3, wav, m4a, aac, flac, ogg, wma, aiff`, can be expanded to any `ffmpeg` supported format)
