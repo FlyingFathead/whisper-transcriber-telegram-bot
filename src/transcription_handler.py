@@ -209,7 +209,6 @@ def split_message(message, max_length=4096):
 
 # audio download
 async def download_audio(url, output_path):
-
     logger.info(f"Attempting to download audio from: {url}")
     
     # Specify a cache directory that yt-dlp can write to
@@ -222,7 +221,6 @@ async def download_audio(url, output_path):
             logger.info(f"Created cache directory: {cache_dir}")
         except Exception as e:
             logger.error(f"Failed to create cache directory {cache_dir}: {e}")
-            # Optionally, handle the error (e.g., use a default cache dir or abort the operation)
 
     command = [
         "yt-dlp",
@@ -234,50 +232,56 @@ async def download_audio(url, output_path):
     ]
 
     # Start the subprocess
-    process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    process = await asyncio.create_subprocess_exec(
+        *command, 
+        stdout=asyncio.subprocess.PIPE, 
+        stderr=asyncio.subprocess.PIPE
+    )
 
-    # Initialize an empty buffer and set the initial time marker
-    output_buffer = ''
-    last_log_time = time.time()
-    log_interval = get_logging_settings()  # Replace the hardcoded value
+    stdout_lines = []
+    stderr_lines = []
 
-    while True:
-        chunk = await process.stdout.read(1)
-        if not chunk:  # Break if no more output
-            break
+    # Define async functions to read from stdout and stderr
+    async def read_stream(stream, lines, log_func):
+        while True:
+            line = await stream.readline()
+            if line:
+                decoded_line = line.decode().rstrip()
+                lines.append(decoded_line)
+                log_func(decoded_line)
+            else:
+                break
 
-        output_buffer += chunk.decode()
+    # Read from stdout and stderr concurrently
+    await asyncio.gather(
+        read_stream(process.stdout, stdout_lines, logger.info),
+        read_stream(process.stderr, stderr_lines, logger.error)
+    )
 
-        # Log at regular time intervals, regardless of the content
-        current_time = time.time()
-        if current_time - last_log_time >= log_interval:
-            if output_buffer.strip():
-                logger.info(output_buffer.strip())
-                output_buffer = ''  # Reset the buffer
-                last_log_time = current_time
+    # Wait for the process to finish
+    await process.wait()
 
-    # After the loop, ensure to log any remaining output
-    if output_buffer.strip():
-        logger.info(output_buffer.strip())
-
-    # Check for any error output
-    stderr = await process.stderr.read()
-    if stderr:
-        stderr_message = stderr.decode().strip()
-
-        # Check for specific error messages related to cookies or rate limits
-        if "cookies" in stderr_message.lower() or "429" in stderr_message.lower():
+    # Check the return code
+    if process.returncode != 0:
+        stderr_output = '\n'.join(stderr_lines)
+        # Check for specific error messages
+        if any(keyword in stderr_output for keyword in [
+            "Sign in to confirm you're not a bot",
+            "unable to extract initial player response",
+            "This video is unavailable",
+            "ERROR:"
+        ]):
             custom_error_message = (
-                "YouTube is blocking the download due to missing cookies or excessive requests. "
-                "You can try one of the following: choose a different video, upload the audio file separately, "
-                "try again later, or use a session cookie for access "
-                "if you are the administrator of this bot."
+                "Failed to download audio due to YouTube's anti-bot measures or video restrictions. "
+                "Possible reasons include age restrictions, region locks, or the video requiring sign-in. "
+                "Please try a different video, or if you're the administrator, consider using cookies with `yt-dlp`."
             )
             logger.error(f"Error: {custom_error_message}")
             raise Exception(custom_error_message)
-
-        # Log any other errors
-        logger.error(f"yt-dlp stderr: {stderr_message}")
+        else:
+            # For other errors, raise a generic exception with stderr output
+            logger.error(f"yt-dlp failed with error:\n{stderr_output}")
+            raise Exception(f"Failed to download audio: {stderr_output}")
 
     # Verify the download success
     if os.path.exists(output_path):
@@ -405,7 +409,17 @@ async def process_url_message(message_text, bot, update, model, language):
                 continue
 
             # Skip URL normalization
-            normalized_url = url  # Use the URL directly without normalization
+            # normalized_url = url  # Use the URL directly without normalization
+
+            # Normalize YouTube URL if it's a YouTube URL
+            if "youtube" in url or "youtu.be" in url:
+                normalized_url = normalize_youtube_url(url)
+                if not normalized_url:
+                    await bot.send_message(chat_id=update.effective_chat.id, text="Invalid YouTube URL.")
+                    continue
+            else:
+                # For non-YouTube URLs, use the URL directly
+                normalized_url = url
 
             logger.info(f"User {user_id} requested a transcript for normalized URL: {normalized_url}")
             await bot.send_message(chat_id=update.effective_chat.id, text="Processing URL...")
@@ -658,19 +672,40 @@ def extract_youtube_video_id(url):
 
 def normalize_youtube_url(url):
     parsed_url = urlparse(url)
+    query_params = parse_qs(parsed_url.query)
+    video_id = None
+
     if 'youtu.be' in parsed_url.netloc:
-        # Extracts video ID from the path for youtu.be short URLs.
-        video_id = parsed_url.path.split('/')[1]
+        # Extract video ID from path
+        video_id = parsed_url.path.strip('/')
+    elif 'youtube.com' in parsed_url.netloc:
+        if 'v' in query_params:
+            video_id = query_params['v'][0]
+        else:
+            # Handle URLs like https://www.youtube.com/embed/VIDEO_ID
+            path_parts = parsed_url.path.split('/')
+            if 'embed' in path_parts:
+                embed_index = path_parts.index('embed')
+                if len(path_parts) > embed_index + 1:
+                    video_id = path_parts[embed_index + 1]
+            elif 'shorts' in path_parts:
+                shorts_index = path_parts.index('shorts')
+                if len(path_parts) > shorts_index + 1:
+                    video_id = path_parts[shorts_index + 1]
+            elif len(path_parts) > 1:
+                # For URLs like https://www.youtube.com/watch/VIDEO_ID
+                video_id = path_parts[-1]
     else:
-        # Extracts video ID from query parameters for regular YouTube URLs.
-        query_params = parse_qs(parsed_url.query)
-        video_id = query_params.get('v', [None])[0]
-    
+        logger.error(f"Unsupported YouTube URL format: {url}")
+        return None
+
     if video_id:
+        # Remove any additional parameters from the video ID
+        video_id = video_id.split('?')[0].split('&')[0]
+        # Construct the normalized URL
         return f'https://www.youtube.com/watch?v={video_id}'
     else:
-        # Log or handle the unsupported URL format.
-        logger.error(f"Unsupported YouTube URL format: {url}")
+        logger.error(f"Could not extract video ID from URL: {url}")
         return None
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
