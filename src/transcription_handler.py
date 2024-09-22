@@ -210,7 +210,11 @@ def split_message(message, max_length=4096):
 # audio download
 async def download_audio(url, output_path):
     logger.info(f"Attempting to download audio from: {url}")
-    
+
+    # Read settings from configuration
+    use_cookies = config.getboolean('YTDLPSettings', 'use_cookies', fallback=False)
+    cookies_file = config.get('YTDLPSettings', 'cookies_file', fallback='config/cookies.txt')
+
     # Specify a cache directory that yt-dlp can write to
     cache_dir = ".cache"
 
@@ -227,9 +231,17 @@ async def download_audio(url, output_path):
         "--extract-audio",
         "--audio-format", "mp3",
         "--cache-dir", cache_dir,  # Specify the custom cache directory
-        url,
-        "-o", output_path
     ]
+
+    if use_cookies:
+        if os.path.exists(cookies_file):
+            command.extend(["--cookies", cookies_file])
+            logger.info(f"Using cookies file: {cookies_file}")
+        else:
+            logger.error(f"Cookies file {cookies_file} does not exist.")
+            raise Exception(f"Cookies file {cookies_file} does not exist.")
+
+    command.extend([url, "-o", output_path])
 
     # Start the subprocess
     process = await asyncio.create_subprocess_exec(

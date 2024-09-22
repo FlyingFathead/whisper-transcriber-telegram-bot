@@ -13,6 +13,7 @@ The bot supports a broad range of media sites via `yt-dlp` ([listed here](https:
 ## Features
 
 - 🎥 Downloads and processes media URLs from any source supported by `yt-dlp`.
+   - _(can be configured to use cookies in `config.ini`)_
 - 📲 Can receive Telegram audio messages as well as files, i.e. `.mp3` and `.wav` for transcription.
    - _(all other `ffmpeg` supported formats also available, configurable via `config.ini`)_
 - 🤖 Uses a local Whisper model from the `openai-whisper` package for transcription.
@@ -122,6 +123,7 @@ After launching the bot, you can interact with it via Telegram:
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1654 - `yt-dlp` can now be configured to use cookies (for i.e. YouTube downloads) in `config.ini`
 - v0.1653 - even more exception and error catching, especially for YouTube URLs
 - v0.1652 - maximum file size checks (20MB) as per to Telegram API
 - v0.1651 - improved parsing for Youtube URLs, better error handling

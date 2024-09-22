@@ -1,3 +1,7 @@
+# Ignore the cookies.txt file in config
+cookies.txt
+config/cookies.txt
+
 # Ignore all files named bot_token.txt
 **/bot_token.txt
 
