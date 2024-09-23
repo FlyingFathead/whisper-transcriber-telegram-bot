@@ -12,6 +12,8 @@ from pydub import AudioSegment
 from scipy.ndimage import uniform_filter1d
 import warnings
 import logging
+from sklearn.metrics import silhouette_score  # For dynamic speaker estimation
+
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -55,20 +57,40 @@ def smooth_labels(labels, window_size=SMOOTHING_WINDOW_SIZE):
     smoothed_labels = np.round(smoothed_labels).astype(int)
     return smoothed_labels
 
-def cluster_embeddings(embeddings, min_clusters=2, max_clusters=2):
-    # Create refinement options
-    refinement_options = RefinementOptions(
-        p_percentile=0.90,
-        gaussian_blur_sigma=1,
-    )
-    # Create clusterer with refinement options
-    clusterer = SpectralClusterer(
-        min_clusters=min_clusters,
-        max_clusters=max_clusters,
-        refinement_options=refinement_options,
-    )
-    labels = clusterer.predict(embeddings)
-    return labels
+def estimate_num_speakers(embeddings, min_speakers=1, max_speakers=10):
+    """
+    Estimate the optimal number of speakers using silhouette score.
+    """
+    best_score = -1
+    best_num_speakers = min_speakers
+    best_labels = None
+
+    for n_speakers in range(min_speakers, max_speakers + 1):
+        # Perform clustering with a different number of speakers
+        refinement_options = RefinementOptions(
+            p_percentile=0.90,
+            gaussian_blur_sigma=1,
+        )
+        clusterer = SpectralClusterer(
+            min_clusters=n_speakers,
+            max_clusters=n_speakers,
+            refinement_options=refinement_options,
+        )
+        labels = clusterer.predict(embeddings)
+
+        # Calculate the silhouette score for this clustering
+        score = silhouette_score(embeddings, labels)
+
+        logging.info(f"Number of speakers: {n_speakers}, Silhouette Score: {score}")
+
+        # Keep track of the best score and corresponding number of speakers
+        if score > best_score:
+            best_score = score
+            best_num_speakers = n_speakers
+            best_labels = labels
+
+    logging.info(f"Best number of speakers: {best_num_speakers} with a Silhouette Score of {best_score}")
+    return best_labels
 
 def transcribe_audio(filepath, model_name=WHISPER_MODEL_NAME):
     # Load Whisper model
@@ -155,8 +177,8 @@ def main(audio_filepath, output_filepath=None):
     logging.info("Computing embeddings...")
     encoder = VoiceEncoder()
     embeddings = get_embeddings(segments, encoder)
-    logging.info("Clustering embeddings...")
-    labels = cluster_embeddings(embeddings)
+    logging.info("Estimating number of speakers and clustering embeddings...")
+    labels = estimate_num_speakers(embeddings)  # Dynamic speaker estimation
     logging.info("Smoothing labels...")
     labels = smooth_labels(labels)
     logging.info("Transcribing audio...")
