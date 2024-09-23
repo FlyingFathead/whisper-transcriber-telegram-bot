@@ -123,6 +123,12 @@ After launching the bot, you can interact with it via Telegram:
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1655 - added `diarization.py` and `resemblyzer_safety_check.py` under `src/utils/` for [Resemblyzer](https://github.com/resemble-ai/Resemblyzer) support
+   - these are for future in-bot diarization implementations (requires `pip install resemblyzer` to be installed first in order to run)
+   - the current resemblyzer pip version (`resemblyzer==0.1.4`) can be patched with `resemblyzer_safety_check.py` to ensure safe pickle/depickle as per up-to-date standards
+   - `diarization.py` can be used as a standalone diarization module for testing (requires `resemblyzer`)
+      - (try with i.e. `python diarization.py inputfile.mp3 textfile.txt`)
+   - both will pave the way for future diarization options that will be implemented in the bot's functionalities in the future
 - v0.1654 - `yt-dlp` can now be configured to use cookies (for i.e. YouTube downloads) in `config.ini`
 - v0.1653 - even more exception and error catching, especially for YouTube URLs
 - v0.1652 - maximum file size checks (20MB) as per to Telegram API
