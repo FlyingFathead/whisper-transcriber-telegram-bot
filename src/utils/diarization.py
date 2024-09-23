@@ -57,13 +57,20 @@ def smooth_labels(labels, window_size=SMOOTHING_WINDOW_SIZE):
     smoothed_labels = np.round(smoothed_labels).astype(int)
     return smoothed_labels
 
+from sklearn.metrics import silhouette_score
+
 def estimate_num_speakers(embeddings, min_speakers=1, max_speakers=10):
     """
     Estimate the optimal number of speakers using silhouette score.
     """
     best_score = -1
     best_num_speakers = min_speakers
-    best_labels = None
+    best_labels = np.zeros(len(embeddings))  # Default to one speaker
+
+    # If only one speaker, just return one label for all
+    if min_speakers == 1 and max_speakers == 1:
+        logging.info(f"Detected one speaker, skipping clustering.")
+        return best_labels
 
     for n_speakers in range(min_speakers, max_speakers + 1):
         # Perform clustering with a different number of speakers
@@ -77,6 +84,11 @@ def estimate_num_speakers(embeddings, min_speakers=1, max_speakers=10):
             refinement_options=refinement_options,
         )
         labels = clusterer.predict(embeddings)
+
+        # Skip silhouette score if only 1 cluster
+        if len(np.unique(labels)) == 1:
+            logging.info(f"Only one cluster found with {n_speakers} speakers. Skipping silhouette score.")
+            continue
 
         # Calculate the silhouette score for this clustering
         score = silhouette_score(embeddings, labels)
