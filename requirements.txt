@@ -1,6 +1,8 @@
-python-telegram-bot
-yt-dlp
-openai-whisper
-gputil
-ffmpeg-python
-pydub
+python-telegram-bot>=21.5
+yt-dlp>=2024.8.6
+openai-whisper>=20231117
+gputil>=1.4.0
+ffmpeg-python>=0.2.0
+pydub>=0.25.1
+spectralcluster>=0.2.21
+resemblyzer>=0.1.4
