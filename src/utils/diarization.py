@@ -57,8 +57,6 @@ def smooth_labels(labels, window_size=SMOOTHING_WINDOW_SIZE):
     smoothed_labels = np.round(smoothed_labels).astype(int)
     return smoothed_labels
 
-from sklearn.metrics import silhouette_score
-
 def estimate_num_speakers(embeddings, min_speakers=1, max_speakers=10):
     """
     Estimate the optimal number of speakers using silhouette score.
