@@ -123,8 +123,8 @@ After launching the bot, you can interact with it via Telegram:
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
-- v0.1655 - added `diarization.py` and `resemblyzer_safety_check.py` under `src/utils/` for [Resemblyzer](https://github.com/resemble-ai/Resemblyzer) support
-   - these are for future in-bot diarization implementations (requires `pip install resemblyzer` to be installed first in order to run)
+- v0.1655 - added `diarization.py` and `resemblyzer_safety_check.py` under `src/utils/` for [Resemblyzer](https://github.com/resemble-ai/Resemblyzer) diarization support
+   - these are WIP; for future in-bot diarization implementations (requires `pip install resemblyzer` to be installed first in order to run)
    - the current resemblyzer pip version (`resemblyzer==0.1.4`) can be patched with `resemblyzer_safety_check.py` to ensure safe pickle/depickle as per up-to-date standards
    - `diarization.py` can be used as a standalone diarization module for testing (requires `resemblyzer`)
       - (try with i.e. `python diarization.py inputfile.mp3 textfile.txt`)
