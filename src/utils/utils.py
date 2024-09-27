@@ -2,6 +2,7 @@
 
 import os
 import re
+import html
 import shutil
 import sys
 import datetime
@@ -24,27 +25,55 @@ def print_startup_message(version_number):
     print(f"[{now}] Telegram video transcriber bot v.{version_number} is starting up...", flush=True)
     hz_line()
 
-# safe splitting
+# safe splitting method
 def safe_split_message(message, max_length=4000):
     """
     Safely split a message into chunks without breaking words or HTML tags.
     """
     parts = []
-    while len(message) > max_length:
-        # Try to split at the last newline character before max_length
-        split_pos = message.rfind('\n', 0, max_length)
-        # If no newline character, split at the last space
-        if split_pos == -1:
-            split_pos = message.rfind(' ', 0, max_length)
-        # If no space, split at max_length
-        if split_pos == -1:
-            split_pos = max_length
-        # Add the chunk to parts
-        parts.append(message[:split_pos])
-        # Remove the chunk from message
-        message = message[split_pos:].lstrip()
-    parts.append(message)
+    # Escape HTML special characters
+    message = html.escape(message)
+    pattern = re.compile(r'(.{1,%d})(?:\s+|$)' % max_length, re.DOTALL)
+    index = 0
+    while index < len(message):
+        if len(message) - index <= max_length:
+            parts.append(message[index:])
+            break
+        match = pattern.match(message, pos=index)
+        if match:
+            end = match.end()
+            if end == index:
+                # No progress made, force a split
+                end = index + max_length
+            parts.append(message[index:end])
+            index = end
+        else:
+            # No match found, force a split
+            parts.append(message[index:index+max_length])
+            index += max_length
     return parts
+
+# // old "safe" splitting attempts
+# def safe_split_message(message, max_length=4000):
+#     """
+#     Safely split a message into chunks without breaking words or HTML tags.
+#     """
+#     parts = []
+#     while len(message) > max_length:
+#         # Try to split at the last newline character before max_length
+#         split_pos = message.rfind('\n', 0, max_length)
+#         # If no newline character, split at the last space
+#         if split_pos == -1:
+#             split_pos = message.rfind(' ', 0, max_length)
+#         # If no space, split at max_length
+#         if split_pos == -1:
+#             split_pos = max_length
+#         # Add the chunk to parts
+#         parts.append(message[:split_pos])
+#         # Remove the chunk from message
+#         message = message[split_pos:].lstrip()
+#     parts.append(message)
+#     return parts
 
 # def safe_split_message(content, max_length=3996):
 #     """
