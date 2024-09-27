@@ -457,9 +457,18 @@ async def process_url_message(message_text, bot, update, model, language):
             try:
                 await download_audio(normalized_url, audio_path)
             except Exception as e:
+                # error_message = str(e)
+                # await bot.send_message(chat_id=update.effective_chat.id, text=f"Error: {error_message}")
+                # logger.error(f"Download audio failed for URL: {normalized_url}, error: {error_message}")
+
                 error_message = str(e)
+                # Truncate error_message if it's too long
+                max_message_length = 4000  # Adjust as needed
+                if len(error_message) > max_message_length:
+                    error_message = error_message[:max_message_length] + '...'
                 await bot.send_message(chat_id=update.effective_chat.id, text=f"Error: {error_message}")
                 logger.error(f"Download audio failed for URL: {normalized_url}, error: {error_message}")
+
                 continue
 
             if not os.path.exists(audio_path):

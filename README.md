@@ -123,6 +123,7 @@ After launching the bot, you can interact with it via Telegram:
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1657 - more verbose error messages from `yt-dlp` if the download failed
 - v0.1656 - introduced `safe_split_message` to split transcription better and more reliably (edge cases etc) into chunks when longer transcripts are sent as messages
 - v0.1655 - added `diarization.py` and `resemblyzer_safety_check.py` under `src/utils/` for [Resemblyzer](https://github.com/resemble-ai/Resemblyzer) diarization support
    - these are WIP; for future in-bot diarization implementations (requires `pip install resemblyzer` to be installed first in order to run)
