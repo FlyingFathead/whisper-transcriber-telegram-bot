@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1657"
+version_number = "0.1658"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -156,10 +156,10 @@ class TranscriberBot:
                 logger.info(f"Task added to the queue. Current queue size: {queue_length}")
 
                 # Check if this is the only job and nothing is currently processing.
-                response_text = "Your request is next and is currently being processed." if queue_length == 1 else f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
+                response_text = "⏳ Your request is next and is currently being processed." if queue_length == 1 else f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
                 await update.message.reply_text(response_text)
             else:
-                await update.message.reply_text("No valid URL detected in your message. Please send a message that includes a valid URL. If you need help, type: /help")
+                await update.message.reply_text("❌ No valid URL detected in your message. Please send a message that includes a valid URL. If you need help, type: /help")
 
     # async def process_queue(self):
     #     while True:
@@ -586,6 +586,7 @@ class TranscriberBot:
 
     # run
     def run(self):
+        
         loop = asyncio.get_event_loop()
 
         for sig in [signal.SIGINT, signal.SIGTERM]:
@@ -625,5 +626,24 @@ class TranscriberBot:
 
 if __name__ == '__main__':
     print_startup_message(version_number)  # Print startup message
+
+    # Read the update settings from config
+    config = ConfigLoader.get_config()
+    check_for_updates = config.getboolean('UpdateSettings', 'CheckForYTDLPUpdates', fallback=False)
+    update_command = config.get('UpdateSettings', 'UpdateCommand', fallback='pip install -U yt-dlp')
+
+    if check_for_updates:
+        logger.info("Checking for yt-dlp updates...")
+        try:
+            result = subprocess.run(
+                update_command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            logger.info(f"yt-dlp update output:\n{result.stdout.decode()}")
+            logger.info("yt-dlp updated successfully.")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to update yt-dlp: {e.stderr.decode()}")
+        except Exception as e:
+            logger.error(f"An error occurred while updating yt-dlp: {e}")
+
     bot = TranscriberBot()
     bot.run()

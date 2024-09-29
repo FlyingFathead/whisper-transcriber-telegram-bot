@@ -417,7 +417,7 @@ async def process_url_message(message_text, bot, update, model, language):
         for url in urls:
 
             if not allow_all_sites and not ("youtube" in url or "youtu.be" in url):
-                await bot.send_message(chat_id=update.effective_chat.id, text="Unsupported URL format. Currently, only YouTube URLs are fully supported.")
+                await bot.send_message(chat_id=update.effective_chat.id, text="❌ Unsupported URL format. Currently, only YouTube URLs are fully supported.")
                 continue
 
             # Normalize YouTube URL if it's a YouTube URL
@@ -431,7 +431,7 @@ async def process_url_message(message_text, bot, update, model, language):
                 normalized_url = url
 
             logger.info(f"User {user_id} requested a transcript for normalized URL: {normalized_url}")
-            await bot.send_message(chat_id=update.effective_chat.id, text="Processing URL...")
+            await bot.send_message(chat_id=update.effective_chat.id, text="🔄 Processing URL...")
 
             audio_file_name = f"{user_id}_{int(time.time())}.mp3"
             audio_path = os.path.join(audio_dir, audio_file_name)
@@ -448,10 +448,10 @@ async def process_url_message(message_text, bot, update, model, language):
             except Exception as e:
                 error_message = str(e)
                 logger.error(f"An error occurred while fetching video details: {error_message}")
-                await bot.send_message(chat_id=update.effective_chat.id, text=f"Error: {error_message}")
+                await bot.send_message(chat_id=update.effective_chat.id, text=f"❌ Error: {error_message}")
                 continue  # Skip to the next URL if any
 
-            await bot.send_message(chat_id=update.effective_chat.id, text="Fetching the audio track...")
+            await bot.send_message(chat_id=update.effective_chat.id, text="📥 Fetching the audio track...")
 
             # Wrap download_audio in try-except
             try:
@@ -473,8 +473,11 @@ async def process_url_message(message_text, bot, update, model, language):
 
             if not os.path.exists(audio_path):
                 logger.info(f"Audio download failed for URL: {normalized_url}")
-                await bot.send_message(chat_id=update.effective_chat.id, text="Failed to download audio. Please ensure the URL is correct and points to a supported video.")
+                await bot.send_message(chat_id=update.effective_chat.id, text="❌ Failed to download audio. Please ensure the URL is correct and points to a supported video.")
                 continue
+            
+            # Add this line to notify the user
+            await bot.send_message(chat_id=update.effective_chat.id, text="✅ Audio download successful. Proceeding with transcription...")
 
             model = get_whisper_model(user_id)
             audio_duration = details.get('audio_duration', 0)
@@ -491,21 +494,6 @@ async def process_url_message(message_text, bot, update, model, language):
                 f"Requested URL for transcription: {normalized_url}\n"
             )
 
-            language_setting = language if language else "autodetection"
-            detailed_message = (
-                f"Whisper model in use:\n{model}\n\n"
-                f"Model language set to:\n{language_setting}\n\n"
-                f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
-                f"Time now:\n{time_now_str}\n\n"
-                f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
-                "Transcribing audio..."
-            )
-
-            logger.info(f"{log_message}")
-            logger.info(f"{detailed_message}")
-
-            await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
-
             best_gpu = get_best_gpu()
             if best_gpu:
                 device = f'cuda:{best_gpu.id}'
@@ -516,10 +504,25 @@ async def process_url_message(message_text, bot, update, model, language):
                 )
             else:
                 device = 'cpu'
-                gpu_message = "No GPU available, using CPU for transcription."
+                gpu_message = "⚠️ WARNING: No CUDA GPU available, using CPU for transcription. This will be much slower than estimated."
 
             logger.info(gpu_message)
             await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
+
+            language_setting = language if language else "autodetection"
+            detailed_message = (
+                f"Whisper model in use:\n{model}\n\n"
+                f"Model language set to:\n{language_setting}\n\n"
+                f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
+                f"Time now:\n{time_now_str}\n\n"
+                f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
+                "🎙️✍️ Transcribing audio..."
+            )
+
+            logger.info(f"{log_message}")
+            logger.info(f"{detailed_message}")
+
+            await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
             transcription_paths, raw_content = await transcribe_audio(
                 bot, update, audio_path, output_dir, normalized_url, video_info_message,
@@ -652,7 +655,7 @@ async def fetch_video_details(url, max_retries=3, base_delay=5, command_timeout=
                         "ERROR:"
                     ]):
                         custom_error_message = (
-                            "Failed to fetch video details due to YouTube's anti-bot measures or video restrictions. "
+                            "❌ Failed to fetch video details due to YouTube's anti-bot measures or video restrictions. "
                             "Possible reasons include age restrictions, region locks, or the video requiring sign-in. "
                             "Please try a different video URL, or see type /help for supported file formats for delivery. "
                             "If you are the administrator of this service, consider using cookies with `yt-dlp`."
@@ -666,7 +669,7 @@ async def fetch_video_details(url, max_retries=3, base_delay=5, command_timeout=
                     return process_video_details(video_details, url)
                 except json.JSONDecodeError as e:
                     logger.error(f"Error decoding JSON from yt-dlp output: {e}")
-                    raise Exception(f"Error decoding JSON from yt-dlp output: {e}")
+                    raise Exception(f"❌ Error decoding JSON from yt-dlp output: {e}")
         except Exception as e:
             logger.error(f"An unexpected error occurred: {e}")
             # If this was the last attempt, re-raise the exception
@@ -718,11 +721,10 @@ def get_description_snippet(description, max_lines=DESCRIPTION_MAX_LINES):
     snippet = '\n'.join(lines[:max_lines])
     return snippet
 
+
 # Regular expression for extracting the YouTube video ID
-YOUTUBE_REGEX = (
-    r'(https?://)?(www\.)?'
-    '(youtube|youtu|youtube-nocookie)\.(com|be)/'
-    '(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})')
+YOUTUBE_REGEX = r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'
+
 
 def extract_youtube_video_id(url):
     match = re.match(YOUTUBE_REGEX, url)

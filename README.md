@@ -123,6 +123,11 @@ After launching the bot, you can interact with it via Telegram:
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1658 - `UpdateSettings` setting added to `config.ini` to update your bot on startup (can be set to `True` or `False`), as i.e. `yt-dlp` is highly recommended to be kept up to date constantly. You can modify the command line string to whatever modules you want to check updates on during startup.
+   - fixed a parsing bug in YouTube urls
+   - bot now announces successful downloads
+   - added a few emojis here and there for clarity
+      _(feel free to comment if you don't like them)_
 - v0.1657 - more verbose error messages from `yt-dlp` if the download failed
 - v0.1656 - introduced `safe_split_message` to split transcription better and more reliably (edge cases etc) into chunks when longer transcripts are sent as messages
 - v0.1655 - added `diarization.py` and `resemblyzer_safety_check.py` under `src/utils/` for [Resemblyzer](https://github.com/resemble-ai/Resemblyzer) diarization support
