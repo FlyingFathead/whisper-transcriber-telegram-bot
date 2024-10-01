@@ -16,23 +16,23 @@ Can be safely installed and deployed with [Docker](https://www.docker.com/) by u
 
 ## Features
 
-- 🚀 **(New!)** Supports OpenAI's newest `turbo` model of the Whisper `v3` series
-   - (`turbo` was released on September 30, 2024)
+- 🚀 **(New!)** Supports OpenAI's newest `turbo` model of the Whisper v3 series
+   - Whisper-v3 `turbo` was released on September 30, 2024
    - 8x transcription speed (vs. real-time)
    - Nearly on par with the previous `v3-large` model with only 6GB VRAM usage
-- 🎥 Downloads and processes media URLs from any source supported by `yt-dlp`.
+- 🎥 Downloads and processes media URLs from any source supported by `yt-dlp`
    - _(can be configured to use cookies in `config.ini`)_
-- 📲 Can receive Telegram audio messages as well as files, i.e. `.mp3` and `.wav` for transcription.
+- 📲 Can receive Telegram audio messages as well as files, i.e. `.mp3` and `.wav` for transcription
    - _(all other `ffmpeg` supported formats also available, configurable via `config.ini`)_
-- 🤖 Uses a local Whisper model from the `openai-whisper` package for transcription.
+- 🤖 Uses a local Whisper model from the `openai-whisper` package for transcription
    - _(no API required, use your own PC & available CUDA GPU!)_
-- 🖥️ Automatically uses `GPUtil` to map out the best available CUDA-enabled local GPU.
+- 🖥️ Automatically uses `GPUtil` to map out the best available CUDA-enabled local GPU
    - _(auto-switching to CPU-only mode if no CUDA GPU is available)_
-- 📝 Transcribes audio using OpenAI's Whisper model (can be user-selected with `/model`).
+- 📝 Transcribes audio using OpenAI's Whisper model (can be user-selected with `/model`)
    - _(see [openai/whisper](https://github.com/openai/whisper/) for more info on Whisper)_
-- 📄 Returns transcription in text, SRT, and VTT formats.
-- 🔄 Handles concurrent transcription requests efficiently with async & task queuing.
-- 🕒 Features an asynchronous automatic queue system to manage multiple transcription requests seamlessly.
+- 📄 Returns transcription in text, SRT, and VTT formats
+- 🔄 Handles concurrent transcription requests efficiently with async & task queuing
+- 🕒 Features an asynchronous automatic queue system to manage multiple transcription requests seamlessly
 
 ## Installation (non-Docker version)
 
