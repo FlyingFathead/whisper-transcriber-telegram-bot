@@ -8,9 +8,7 @@ The program has been written in Python and it works on Python version `3.10+`, t
 
 Designed for transcribing audio from various media source, such as URLs supported by `yt-dlp`, or via Telegram's audio messages or over media file uploads on Telegram (`.mp3`, `.wav`, `.ogg`, `.flac`, etc.)
 
-Sites supported by `yt-dlp` are [listed here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). Supported audio/video file uploads can be configured separately. 
-
-Compatible with all `ffmpeg` supported formats), with up to `20MB` file sizes as supported by Telegram in their bot API.
+Sites supported by `yt-dlp` are [listed here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). Supported audio and video file uploads can be configured separately from `config.ini`. Compatible with all `ffmpeg` supported formats), with up to `20MB` direct file transfer sizes as supported by Telegram in their bot API.
 
 Can be safely installed and deployed with [Docker](https://www.docker.com/) by using the included `Dockerfile`.
 
