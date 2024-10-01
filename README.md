@@ -19,7 +19,7 @@ Can be safely installed and deployed with [Docker](https://www.docker.com/) by u
    - 8x transcription speed (vs. real-time)
    - Nearly on par with the previous `v3-large` model with only 6GB VRAM usage
 - 🎥 Downloads and processes media URLs from any source supported by `yt-dlp`
-   - _(can be configured to use cookies in `config.ini`)_
+   - _(can be configured to use `cookies.txt` in `config.ini` for better availability)_
 - 📲 Can receive Telegram audio messages as well as files, i.e. `.mp3` and `.wav` for transcription
    - _(all other `ffmpeg` supported formats also available, configurable via `config.ini`)_
 - 🤖 Uses a local Whisper model from the `openai-whisper` package for transcription
