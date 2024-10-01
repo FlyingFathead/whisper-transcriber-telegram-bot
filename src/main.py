@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.17"
+version_number = "0.1701"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -178,6 +178,7 @@ class TranscriberBot:
             logger.info(f"Processing task for user ID {user_id}: {task}")
 
             async with TranscriberBot.processing_lock:  # Use the class-level lock
+                success = False  # Flag to track if the task was successful
                 try:
                     model = get_whisper_model(user_id)
                     language = get_whisper_language(user_id)
@@ -192,6 +193,7 @@ class TranscriberBot:
                     if isinstance(task, str) and task.startswith('http'):
                         logger.info(f"Processing URL: {task}")
                         await process_url_message(task, bot, update, model, language)
+                        success = True  # Mark as successful if no exception occurs
                     elif any(task.endswith(f'.{ext}') for ext in self.allowed_formats):
                         logger.info(f"Processing audio/video file: {task}")
 
@@ -206,7 +208,7 @@ class TranscriberBot:
                         else:
                             device = 'cpu'
                             gpu_message = "No GPU available, using CPU for transcription."
-                        
+
                         logger.info(gpu_message)
                         await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
 
@@ -230,7 +232,7 @@ class TranscriberBot:
                         language_setting = language if language else "autodetection"
                         detailed_message = (
                             f"Audio file length:\n{formatted_audio_duration}\n\n"
-                            f"Whisper model in use:\n{model}\n\n"                
+                            f"Whisper model in use:\n{model}\n\n"
                             f"Model language set to:\n{language_setting}\n\n"
                             f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
                             f"Time now:\n{time_now_str}\n\n"
@@ -240,7 +242,11 @@ class TranscriberBot:
                         logger.info(detailed_message)
                         await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
-                        transcription_paths, raw_content = await transcribe_audio(bot, update, task, self.output_dir, "", video_info_message, self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'), model, device, language)
+                        transcription_paths, raw_content = await transcribe_audio(
+                            bot, update, task, self.output_dir, "", video_info_message,
+                            self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'),
+                            model, device, language
+                        )
 
                         logger.info(f"Transcription paths returned: {transcription_paths}")
 
@@ -251,7 +257,6 @@ class TranscriberBot:
                             continue
 
                         # Send plain text as messages if configured to do so
-                        # New method, includes a "buffer zone"
                         if self.config.getboolean('TranscriptionSettings', 'sendasmessages') and 'txt' in transcription_paths:
                             try:
                                 file_path = transcription_paths['txt']
@@ -263,70 +268,46 @@ class TranscriberBot:
                                         content = content[len(header_content):]
                                     content = transcription_note + content  # Add transcription note
 
-                                    # Define a buffer zone
-                                    buffer_zone = 300
-                                    max_message_length = 4000 - buffer_zone
+                                # Escape content before splitting
+                                content = html.escape(content)
 
-                                    # Split the content safely into chunks
-                                    chunks = safe_split_message(content, max_length=max_message_length)
+                                # Define the maximum message length (Telegram limit is 4096)
+                                max_message_length = 3500
 
-                                    for i, chunk in enumerate(chunks):
-                                        # Escape the chunk
-                                        escaped_chunk = html.escape(chunk)
-                                        # Check if escaped chunk exceeds Telegram's limit
-                                        if len(escaped_chunk) > 4096:
-                                            # Further split the chunk if necessary
-                                            sub_chunks = safe_split_message(chunk, max_length=2000)
-                                            for sub_chunk in sub_chunks:
-                                                escaped_sub_chunk = html.escape(sub_chunk)
-                                                await bot.send_message(chat_id=update.effective_chat.id, text=escaped_sub_chunk, parse_mode='HTML')
-                                        else:
-                                            await bot.send_message(chat_id=update.effective_chat.id, text=escaped_chunk, parse_mode='HTML')
+                                # Split the content safely into chunks
+                                chunks = safe_split_message(content, max_length=max_message_length)
+
+                                # Send each chunk
+                                for i, chunk in enumerate(chunks):
+                                    try:
+                                        await bot.send_message(chat_id=update.effective_chat.id, text=chunk, parse_mode='HTML')
                                         logger.info(f"Sent message chunk: {i + 1}")
-
-                                    # // (old method)
-                                    # chunks = safe_split_message(content, max_length=max_message_length)
-
-                                    # for i, chunk in enumerate(chunks):
-                                    #     await bot.send_message(chat_id=update.effective_chat.id, text=chunk, parse_mode='HTML')
-                                    #     logger.info(f"Sent message chunk: {i + 1}")
-
+                                    except Exception as e:
+                                        logger.error(f"Error sending message chunk {i + 1}: {e}")
+                                        # Optionally, inform the user about the error
+                                        await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred while sending a transcription chunk.")
                             except Exception as e:
-                                logger.error(f"Error in sending plain text message: {e}")
+                                logger.error(f"Error in sending plain text messages: {e}")
+                                # Optionally, inform the user about the error
+                                await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred while preparing the transcription messages.")
                                 # Continue to send files even if sending messages fails
 
                         # Proceed to send files as per your existing logic
                         if self.config.getboolean('TranscriptionSettings', 'sendasfiles'):
                             for fmt, path in transcription_paths.items():
                                 try:
-                                    await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
+                                    with open(path, 'rb') as file:
+                                        await bot.send_document(chat_id=update.effective_chat.id, document=file)
                                     logger.info(f"Sent {fmt} file to user {user_id}: {path}")
                                 except Exception as e:
                                     logger.error(f"Failed to send {fmt} file to user {user_id}: {path}, error: {e}")
+                                    # Optionally, inform the user
+                                    await bot.send_message(chat_id=update.effective_chat.id, text=f"An error occurred while sending the {fmt} file.")
 
-                        # // old method (unsafe splitting)
-                        # if self.config.getboolean('TranscriptionSettings', 'sendasmessages') and 'txt' in transcription_paths:
-                        #     file_path = transcription_paths['txt']
-                        #     with open(file_path, 'r') as f:
-                        #         content = f.read()
-                        #         if self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'):
-                        #             ai_transcript_header = f"[ Transcript generated with: https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/ | OpenAI Whisper model: `{model}` | Language: `{language}` ]"
-                        #             header_content = f"{video_info_message}\n\n{ai_transcript_header}\n\n"
-                        #             content = content[len(header_content):]
-                        #         content = transcription_note + content  # Add transcription note
-                        #         for i in range(0, len(content), 4096):
-                        #             await bot.send_message(chat_id=update.effective_chat.id, text=content[i:i+4096], parse_mode='HTML')
-                        #             logger.info(f"Sent message chunk: {i // 4096 + 1}")
+                        # Mark the task as successful
+                        success = True
 
-                        # # Send files if configured to do so
-                        # if self.config.getboolean('TranscriptionSettings', 'sendasfiles'):
-                        #     for fmt, path in transcription_paths.items():
-                        #         try:
-                        #             await bot.send_document(chat_id=update.effective_chat.id, document=open(path, 'rb'))
-                        #             logger.info(f"Sent {fmt} file to user {user_id}: {path}")
-                        #         except Exception as e:
-                        #             logger.error(f"Failed to send {fmt} file to user {user_id}: {path}, error: {e}")
-
+                        # Clean up audio file if needed
                         if not self.config.getboolean('TranscriptionSettings', 'keepaudiofiles'):
                             try:
                                 os.remove(task)
@@ -336,11 +317,14 @@ class TranscriberBot:
 
                 except Exception as e:
                     logger.error(f"An error occurred while processing the task: {e}")
+                    # Optionally, inform the user about the error
+                    await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred while processing your request.")
+
                 finally:
                     self.task_queue.task_done()
 
                     # Check if completion message should be sent
-                    if notification_settings['send_completion_message']:
+                    if success and notification_settings['send_completion_message']:
                         completion_message = notification_settings['completion_message']
                         await bot.send_message(chat_id=update.effective_chat.id, text=completion_message)
                         logger.info(f"Sent completion message to user ID {user_id}: {completion_message}")

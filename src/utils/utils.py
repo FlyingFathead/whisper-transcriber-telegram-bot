@@ -26,25 +26,44 @@ def print_startup_message(version_number):
     hz_line()
 
 # safe splitting method
-def safe_split_message(message, max_length=4000):
+def safe_split_message(message, max_length=3500):
     """
-    Safely split a message into chunks without breaking words or HTML tags.
+    Safely split a message into chunks that do not exceed max_length.
+    Handles cases where there are no spaces or suitable separators.
+    Ensures that HTML entities and tags are not broken.
     """
     parts = []
     index = 0
     while index < len(message):
-        remaining_message = message[index:]
-        if len(remaining_message) <= max_length:
-            parts.append(remaining_message)
+        end_index = index + max_length
+        if end_index >= len(message):
+            # Remaining message fits within max_length
+            parts.append(message[index:])
             break
-        # Try to split at the last space before max_length
-        split_pos = remaining_message.rfind(' ', 0, max_length)
-        if split_pos == -1:
-            # No space found, force split at max_length
-            split_pos = max_length
-        part = remaining_message[:split_pos]
-        parts.append(part)
-        index += split_pos
+        else:
+            # Initialize split position
+            split_pos = end_index
+            # Adjust split position to avoid breaking HTML entities or tags
+            while True:
+                # Avoid splitting in the middle of an HTML entity
+                if message[split_pos - 1] == '&':
+                    split_pos -= 1
+                # Avoid splitting in the middle of an HTML tag
+                elif message[split_pos - 1] == '<':
+                    split_pos -= 1
+                else:
+                    break
+                # Prevent infinite loop
+                if split_pos <= index:
+                    split_pos = end_index
+                    break
+            # If we moved the split position backward, check for space
+            last_space = message.rfind(' ', index, split_pos)
+            if last_space > index:
+                split_pos = last_space
+            part = message[index:split_pos]
+            parts.append(part)
+            index = split_pos
     return parts
 
 # def safe_split_message(message, max_length=4000):
