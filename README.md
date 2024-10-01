@@ -6,7 +6,7 @@ A local Whisper AI transcriber bot for Telegram, utilizing a local GPU or CPU fo
 
 The program has been written in Python and it works on Python version `3.10+`, tested up to Python `3.12.2`.
 
-Designed for transcribing audio from various media source, such as URLs supported by `yt-dlp`, or via Telegram's audio messages or over media file uploads on Telegram (`.mp3`, `.wav`, `.ogg`, `.flac`, etc).
+Designed for transcribing audio from various media source, such as URLs supported by `yt-dlp`, or via Telegram's audio messages or over media file uploads on Telegram (`.mp3`, `.wav`, `.ogg`, `.flac`, etc.)
 
 Sites supported by `yt-dlp` are [listed here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). Supported audio/video file uploads can be configured separately. 
 
