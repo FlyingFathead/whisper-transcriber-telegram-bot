@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.17021"
+version_number = "0.1703"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -115,6 +115,23 @@ class TranscriberBot:
         # Define output directory for transcriptions
         self.output_dir = "transcriptions"
         os.makedirs(self.output_dir, exist_ok=True)
+
+    async def start_command(self, update: Update, context: CallbackContext) -> None:
+        welcome_message = (
+            "👋 <b>Welcome to the Whisper Transcriber Bot!</b>\n\n"
+            "I'm here to transcribe audio from various sources for you.\n\n"
+            "📌 <b>How Does This Work?</b>\n"
+            "- Send me a link to a supported media URL (e.g., YouTube).\n"
+            "- Or, send an audio file (max 20MB in size), and I'll transcribe it.\n\n"
+            "💡 <b>Commands You Can Use:</b>\n"
+            "- /start: Show this welcome message.\n"
+            "- /help: Get detailed help on how to use this service.\n"
+            "- /info: View current settings and status.\n"
+            "- /model: Change the transcription model.\n"
+            "- /language: Set the transcription language.\n\n"
+            "Let's get started! Send me a link or an audio file to begin."
+        )
+        await update.message.reply_text(welcome_message, parse_mode='HTML')
 
     async def handle_message(self, update: Update, context: CallbackContext) -> None:
         user_id = update.effective_user.id  # Update the user_id
@@ -641,6 +658,7 @@ class TranscriberBot:
                 self.application = Application.builder().token(self.token).build()
 
                 # Add command handlers first
+                self.application.add_handler(CommandHandler('start', self.start_command))                
                 self.application.add_handler(CommandHandler(['help', 'about'], self.help_command))
                 self.application.add_handler(CommandHandler('info', self.info_command))
                 self.application.add_handler(CommandHandler('model', self.model_command))
