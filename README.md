@@ -117,9 +117,9 @@ Replace `'YourTelegramBotToken'` with your actual Telegram bot token. This comma
 
 After launching the bot, you can interact with it via Telegram:
 
-1. Send a video URL, voice message or audio file (in WAV/MP3 format) to the bot.
-2. The bot will acknowledge the request and begin processing.
-3. Once processing is complete, the bot will send the transcription files to you.
+1. Send a video URL (for `yt-dlp` to download), a voice message or an audio file (i.e. `.wav` or `.mp3` format) to the bot.
+2. The bot will acknowledge the request and begin processing, notifying the user of the process.
+3. Once processing is complete, the bot will send the transcription to you. By default, the transcription is sent as a message as well as `.txt`, `.srt` and `.vtt` files. Transcription delivery formats can be adjusted from the `config.ini`.
 
 ## Commands
 
