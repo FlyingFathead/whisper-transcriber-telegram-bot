@@ -16,8 +16,8 @@ Can be safely installed and deployed with [Docker](https://www.docker.com/) by u
 
 ## Features
 
-- 🚀 **(New!)** Supports OpenAI's newest `turbo` model of the Whisper v3 series
-   - Whisper-v3 `turbo` was released on September 30, 2024
+- 🚀 **(New!)** Now supporting OpenAI's `turbo` model of the Whisper v3 series
+   - (Whisper-v3 `turbo` released on September 30, 2024)
    - 8x transcription speed (vs. real-time)
    - Nearly on par with the previous `v3-large` model with only 6GB VRAM usage
 - 🎥 Downloads and processes media URLs from any source supported by `yt-dlp`
