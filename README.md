@@ -1,6 +1,6 @@
 # whisper-transcriber-telegram-bot
 
-A local Whisper AI transcriber bot for Telegram, utilizing a local GPU or CPU for processing. No Whisper API access required -- just utilize your locally available hardware. 
+A local Whisper AI transcriber bot for Telegram, utilizing a local GPU or CPU for processing. No Whisper API access required -- just utilize your locally available hardware. The bot uses `GPUtil` to automatically select an available CUDA GPU, or reverts to CPU-only if none is found.
 
 **Runs on the latest Whisper v3 `turbo` model (released Sept 30, 2024) by default.** Models can be selected both from `config.ini` and via user command: `/model`.
 
