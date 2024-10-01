@@ -25,7 +25,7 @@ MERGE_CONSECUTIVE_SEGMENTS = True
 WINDOW_SIZE = 1.0          # in seconds
 HOP_SIZE = 0.75            # in seconds
 SMOOTHING_WINDOW_SIZE = 5
-WHISPER_MODEL_NAME = "medium.en"  # Options: "tiny", "base", "small", "medium", "medium.en", "large", "large-v3"
+WHISPER_MODEL_NAME = "turbo"  # Options: "tiny", "base", "small", "medium", "medium.en", "large", "large-v3", "turbo"
 
 def load_audio(filepath, target_sr=16000):
     # Load audio with librosa
