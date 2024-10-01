@@ -1,15 +1,18 @@
 # whisper-transcriber-telegram-bot
 
-A local Whisper AI transcriber bot for Telegram, utilizing a local GPU or CPU for processing. No Whisper API access required -- just utilize your locally available hardware.
+A local Whisper AI transcriber bot for Telegram, utilizing a local GPU or CPU for processing. No Whisper API access required -- just utilize your locally available hardware. **Runs on the latest Whisper v3 `turbo` model! (Released Sept 30, 2024)**
 
-Runs on Python 3.10+. Designed to transcribe audio from various media source, such as URLs supported by `yt-dlp`, or via Telegram's audio messages and over audio file uploads (mp3, wav). 
+The bot runs on Python 3.10+ and is designed to transcribe audio from various media source, such as URLs supported by `yt-dlp`, or via Telegram's audio messages and over audio file uploads (mp3, wav). 
 
-Sites supported by `yt-dlp` are [listed here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). Supported audio and video file uploads can be configured separately (compatible with all `ffmpeg` supported formats), with up to `20MB` file sizes as supported by Telegram in their bot API.
+Sites supported by `yt-dlp` are [listed here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). Supported audio/video file uploads can be configured separately. Compatible with all `ffmpeg` supported formats), with up to `20MB` file sizes as supported by Telegram in their bot API.
+
+Can be safely installed and deployed with [Docker](https://www.docker.com/) by using the included `Dockerfile`.
 
 ## Features
 
-- **(NEW!)** Supports OpenAI's newest `turbo` model of the Whisper `v3` series (Oct 1, 2024)
-   - `turbo` has a 8x transcription speed with only 6GB VRAM usage
+- 🚀 **(New!)** Supports OpenAI's newest `turbo` model of the Whisper `v3` series (released September 30, 2024)
+   - 8x transcription speed (vs. real-time)
+   - Nearly on par with the previous `v3-large` model with only 6GB VRAM usage
 - 🎥 Downloads and processes media URLs from any source supported by `yt-dlp`.
    - _(can be configured to use cookies in `config.ini`)_
 - 📲 Can receive Telegram audio messages as well as files, i.e. `.mp3` and `.wav` for transcription.
@@ -178,7 +181,7 @@ After launching the bot, you can interact with it via Telegram:
 - v0.06 - better handling of details for all video sources, transcription time estimates
 - v0.05 - universal video description parsing (platform-agnostic)
 - v0.04.1 - version number printouts and added utils
-- v0.04 - expanded support for various media sources via `yt-dlp`, supported sites listed [here](https://github.com/yt-dlp/yt-dlp/blob/)
+- v0.04 - expanded support for various media sources via `yt-dlp`, supported sites listed [here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
 - v0.03 - better logging to console, Whisper model + keep audio y/n can now be set in `config.ini`
 - v0.02 - add video information to the transcript text file 
     - (see: `config.ini` => `IncludeHeaderInTranscription = True`)
