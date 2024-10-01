@@ -135,8 +135,8 @@ After launching the bot, you can interact with it via Telegram (message `@whatev
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
-- v0.17 - (1. Oct 2024) [Now supports OpenAI's brand new Whisper v3 `turbo` model](https://github.com/openai/whisper/blob/main/model-card.md)
-   - `turbo` is now enabled by default
+- v0.17 - (1. Oct 2024) **Now supports OpenAI's brand new Whisper v3 [`turbo` model](https://github.com/openai/whisper/blob/main/model-card.md)**
+   - `turbo` is enabled by default
 - v0.1658 - `UpdateSettings` setting added to `config.ini` to update your bot on startup (can be set to `True` or `False`), as i.e. `yt-dlp` is highly recommended to be kept up to date constantly. You can modify the command line string to whatever modules you want to check updates on during startup.
    - fixed a parsing bug in YouTube urls
    - bot now announces successful downloads
