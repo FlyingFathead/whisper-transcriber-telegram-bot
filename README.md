@@ -115,9 +115,9 @@ Replace `'YourTelegramBotToken'` with your actual Telegram bot token. This comma
 
  ## Getting the Telegram Bot API Token
 
-1. If you haven't got an active [Telegram Bot API](https://core.telegram.org/bots/api) token yet, set up a new Telegram bot by interacting with Telegram's `@BotFather` (use Telegram's user lookup to search for the user, message it and run the necessary bot setup to get your API key.)
+1. If you haven't got an active [Telegram Bot API](https://core.telegram.org/bots/api) token yet, set up a new Telegram bot by interacting with Telegram's `@BotFather`. Use Telegram's user lookup to search for the user, message it and run the necessary bot setup to get your API key.
 
-2. After receiving your Telegram Bot API token from `@BotFather`, either copy-paste the Telegram Bot API authentication token to a text file (`config/bot_token.txt`) or set the API token as an environment variable with the name `TELEGRAM_BOT_TOKEN`. 
+2. After setting up your bot and receiving your Telegram Bot API token from `@BotFather`, either copy-paste the Telegram Bot API authentication token into a text file (`config/bot_token.txt`) or set the API token as an environment variable with the name `TELEGRAM_BOT_TOKEN`. The program will look for both during startup, and you can choose whichever you want.
 
 ## Usage
 
