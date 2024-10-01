@@ -113,9 +113,15 @@ docker run --name whisper-bot -d \
 
 Replace `'YourTelegramBotToken'` with your actual Telegram bot token. This command also mounts the `config` directory and the Whisper model cache directory to preserve settings and downloaded models across container restarts.
 
+ ## Getting the Telegram Bot API Token
+
+1. If you haven't got an active [Telegram Bot API](https://core.telegram.org/bots/api) token yet, set up a new Telegram bot by interacting with Telegram's `@BotFather` (use Telegram's user lookup to search for the user, message it and run the necessary bot setup to get your API key.)
+
+2. After receiving your Telegram Bot API token from `@BotFather`, either copy-paste the Telegram Bot API authentication token to a text file (`config/bot_token.txt`) or set the API token as an environment variable with the name `TELEGRAM_BOT_TOKEN`. 
+
 ## Usage
 
-After launching the bot, you can interact with it via Telegram:
+After launching the bot, you can interact with it via Telegram (message `@whatever_your_bot_name_is_Bot`):
 
 1. Send a video URL (for `yt-dlp` to download), a voice message or an audio file (i.e. `.wav` or `.mp3` format) to the bot.
 2. The bot will acknowledge the request and begin processing, notifying the user of the process.
