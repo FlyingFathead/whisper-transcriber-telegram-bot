@@ -135,6 +135,7 @@ After launching the bot, you can interact with it via Telegram (message `@whatev
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1702 - prevent queue hangs with new method
 - v0.1701 - better exception catching when chunking long transcripts (due to Telegram's message limits) [See issue](https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/issues/3)
 - v0.17 - (1. Oct 2024) **Now supports OpenAI's brand new Whisper v3 [`turbo` model](https://github.com/openai/whisper/blob/main/model-card.md)**
    - `turbo` is enabled by default

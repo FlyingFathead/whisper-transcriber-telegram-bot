@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1701"
+version_number = "0.1702"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -173,161 +173,199 @@ class TranscriberBot:
 
     async def process_queue(self):
         while True:
-            task, bot, update = await self.task_queue.get()
-            user_id = update.effective_user.id
-            logger.info(f"Processing task for user ID {user_id}: {task}")
+            try:
+                task, bot, update = await self.task_queue.get()
+                user_id = update.effective_user.id
+                logger.info(f"Processing task for user ID {user_id}: {task}")
 
-            async with TranscriberBot.processing_lock:  # Use the class-level lock
-                success = False  # Flag to track if the task was successful
                 try:
-                    model = get_whisper_model(user_id)
-                    language = get_whisper_language(user_id)
+                    async with TranscriberBot.processing_lock:
+                        success = False  # Flag to track if the task was successful
+                        try:
+                            model = get_whisper_model(user_id)
+                            language = get_whisper_language(user_id)
 
-                    if language == "auto":
-                        language = None
+                            if language == "auto":
+                                language = None
 
-                    video_info_message = ""  # Set a default empty value for video_info_message
-                    ai_transcript_header = ""  # Set a default empty value for ai_transcript_header
-                    transcription_note = "📝🔊 <i>(transcribed audio)</i>\n\n"  # Define transcription note
+                            video_info_message = ""  # Set a default empty value for video_info_message
+                            ai_transcript_header = ""  # Set a default empty value for ai_transcript_header
+                            transcription_note = "📝🔊 <i>(transcribed audio)</i>\n\n"  # Define transcription note
 
-                    if isinstance(task, str) and task.startswith('http'):
-                        logger.info(f"Processing URL: {task}")
-                        await process_url_message(task, bot, update, model, language)
-                        success = True  # Mark as successful if no exception occurs
-                    elif any(task.endswith(f'.{ext}') for ext in self.allowed_formats):
-                        logger.info(f"Processing audio/video file: {task}")
+                            if isinstance(task, str) and task.startswith('http'):
+                                logger.info(f"Processing URL: {task}")
+                                await process_url_message(task, bot, update, model, language)
+                                success = True  # Mark as successful if no exception occurs
+                            elif any(task.endswith(f'.{ext}') for ext in self.allowed_formats):
+                                logger.info(f"Processing audio/video file: {task}")
 
-                        best_gpu = get_best_gpu()
-                        if best_gpu:
-                            device = f'cuda:{best_gpu.id}'
-                            gpu_message = (
-                                f"Using GPU {best_gpu.id}: {best_gpu.name}\n"
-                                f"Free Memory: {best_gpu.memoryFree} MB\n"
-                                f"Load: {best_gpu.load * 100:.1f}%"
-                            )
-                        else:
-                            device = 'cpu'
-                            gpu_message = "No GPU available, using CPU for transcription."
+                                best_gpu = get_best_gpu()
+                                if best_gpu:
+                                    device = f'cuda:{best_gpu.id}'
+                                    gpu_message = (
+                                        f"Using GPU {best_gpu.id}: {best_gpu.name}\n"
+                                        f"Free Memory: {best_gpu.memoryFree} MB\n"
+                                        f"Load: {best_gpu.load * 100:.1f}%"
+                                    )
+                                else:
+                                    device = 'cpu'
+                                    gpu_message = "No GPU available, using CPU for transcription."
 
-                        logger.info(gpu_message)
-                        await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
-
-                        audio_duration = get_audio_duration(task)
-                        if audio_duration is None:
-                            await bot.send_message(chat_id=update.effective_chat.id, text="Invalid audio file. Please upload or link to a valid audio file.")
-                            if os.path.exists(task):
-                                os.remove(task)
-                            continue
-
-                        estimated_time = estimate_transcription_time(model, audio_duration)
-                        estimated_minutes = estimated_time / 60  # Convert to minutes for user-friendly display
-
-                        current_time = datetime.now()
-                        estimated_finish_time = current_time + timedelta(seconds=estimated_time)
-
-                        time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
-                        estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
-
-                        formatted_audio_duration = format_duration(audio_duration)
-                        language_setting = language if language else "autodetection"
-                        detailed_message = (
-                            f"Audio file length:\n{formatted_audio_duration}\n\n"
-                            f"Whisper model in use:\n{model}\n\n"
-                            f"Model language set to:\n{language_setting}\n\n"
-                            f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
-                            f"Time now:\n{time_now_str}\n\n"
-                            f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
-                            "Transcribing audio..."
-                        )
-                        logger.info(detailed_message)
-                        await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
-
-                        transcription_paths, raw_content = await transcribe_audio(
-                            bot, update, task, self.output_dir, "", video_info_message,
-                            self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'),
-                            model, device, language
-                        )
-
-                        logger.info(f"Transcription paths returned: {transcription_paths}")
-
-                        if not transcription_paths:
-                            await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")
-                            if os.path.exists(task):
-                                os.remove(task)
-                            continue
-
-                        # Send plain text as messages if configured to do so
-                        if self.config.getboolean('TranscriptionSettings', 'sendasmessages') and 'txt' in transcription_paths:
-                            try:
-                                file_path = transcription_paths['txt']
-                                with open(file_path, 'r') as f:
-                                    content = f.read()
-                                    if self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'):
-                                        ai_transcript_header = f"[ Transcript generated with: https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/ | OpenAI Whisper model: `{model}` | Language: `{language}` ]"
-                                        header_content = f"{video_info_message}\n\n{ai_transcript_header}\n\n"
-                                        content = content[len(header_content):]
-                                    content = transcription_note + content  # Add transcription note
-
-                                # Escape content before splitting
-                                content = html.escape(content)
-
-                                # Define the maximum message length (Telegram limit is 4096)
-                                max_message_length = 3500
-
-                                # Split the content safely into chunks
-                                chunks = safe_split_message(content, max_length=max_message_length)
-
-                                # Send each chunk
-                                for i, chunk in enumerate(chunks):
-                                    try:
-                                        await bot.send_message(chat_id=update.effective_chat.id, text=chunk, parse_mode='HTML')
-                                        logger.info(f"Sent message chunk: {i + 1}")
-                                    except Exception as e:
-                                        logger.error(f"Error sending message chunk {i + 1}: {e}")
-                                        # Optionally, inform the user about the error
-                                        await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred while sending a transcription chunk.")
-                            except Exception as e:
-                                logger.error(f"Error in sending plain text messages: {e}")
-                                # Optionally, inform the user about the error
-                                await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred while preparing the transcription messages.")
-                                # Continue to send files even if sending messages fails
-
-                        # Proceed to send files as per your existing logic
-                        if self.config.getboolean('TranscriptionSettings', 'sendasfiles'):
-                            for fmt, path in transcription_paths.items():
+                                logger.info(gpu_message)
                                 try:
-                                    with open(path, 'rb') as file:
-                                        await bot.send_document(chat_id=update.effective_chat.id, document=file)
-                                    logger.info(f"Sent {fmt} file to user {user_id}: {path}")
+                                    await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
                                 except Exception as e:
-                                    logger.error(f"Failed to send {fmt} file to user {user_id}: {path}, error: {e}")
-                                    # Optionally, inform the user
-                                    await bot.send_message(chat_id=update.effective_chat.id, text=f"An error occurred while sending the {fmt} file.")
+                                    logger.error(f"Failed to send GPU message: {e}")
 
-                        # Mark the task as successful
-                        success = True
+                                audio_duration = get_audio_duration(task)
+                                if audio_duration is None:
+                                    try:
+                                        await bot.send_message(chat_id=update.effective_chat.id, text="Invalid audio file. Please upload or link to a valid audio file.")
+                                    except Exception as e:
+                                        logger.error(f"Failed to send invalid audio file message: {e}")
+                                    if os.path.exists(task):
+                                        os.remove(task)
+                                    continue
 
-                        # Clean up audio file if needed
-                        if not self.config.getboolean('TranscriptionSettings', 'keepaudiofiles'):
+                                estimated_time = estimate_transcription_time(model, audio_duration)
+                                estimated_minutes = estimated_time / 60  # Convert to minutes for user-friendly display
+
+                                current_time = datetime.now()
+                                estimated_finish_time = current_time + timedelta(seconds=estimated_time)
+
+                                time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
+                                estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
+
+                                formatted_audio_duration = format_duration(audio_duration)
+                                language_setting = language if language else "autodetection"
+                                detailed_message = (
+                                    f"Audio file length:\n{formatted_audio_duration}\n\n"
+                                    f"Whisper model in use:\n{model}\n\n"
+                                    f"Model language set to:\n{language_setting}\n\n"
+                                    f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
+                                    f"Time now:\n{time_now_str}\n\n"
+                                    f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
+                                    "Transcribing audio..."
+                                )
+                                logger.info(detailed_message)
+                                try:
+                                    await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
+                                except Exception as e:
+                                    logger.error(f"Failed to send detailed message: {e}")
+
+                                transcription_paths, raw_content = await transcribe_audio(
+                                    bot, update, task, self.output_dir, "", video_info_message,
+                                    self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'),
+                                    model, device, language
+                                )
+
+                                logger.info(f"Transcription paths returned: {transcription_paths}")
+
+                                if not transcription_paths:
+                                    try:
+                                        await bot.send_message(chat_id=update.effective_chat.id, text="Failed to transcribe audio.")
+                                    except Exception as e:
+                                        logger.error(f"Failed to send failure message: {e}")
+                                    if os.path.exists(task):
+                                        os.remove(task)
+                                    continue
+
+                                # Send plain text as messages if configured to do so
+                                if self.config.getboolean('TranscriptionSettings', 'sendasmessages') and 'txt' in transcription_paths:
+                                    try:
+                                        file_path = transcription_paths['txt']
+                                        with open(file_path, 'r') as f:
+                                            content = f.read()
+                                            if self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription'):
+                                                ai_transcript_header = f"[ Transcript generated with: https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/ | OpenAI Whisper model: `{model}` | Language: `{language}` ]"
+                                                header_content = f"{video_info_message}\n\n{ai_transcript_header}\n\n"
+                                                content = content[len(header_content):]
+                                            content = transcription_note + content  # Add transcription note
+
+                                        # Escape content before splitting
+                                        content = html.escape(content)
+
+                                        # Define the maximum message length (Telegram limit is 4096)
+                                        max_message_length = 3500
+
+                                        # Split the content safely into chunks
+                                        chunks = safe_split_message(content, max_length=max_message_length)
+
+                                        # Send each chunk
+                                        for i, chunk in enumerate(chunks):
+                                            try:
+                                                await bot.send_message(chat_id=update.effective_chat.id, text=chunk, parse_mode='HTML')
+                                                logger.info(f"Sent message chunk: {i + 1}")
+                                            except Exception as e:
+                                                logger.error(f"Error sending message chunk {i + 1}: {e}")
+                                                # Optionally, inform the user about the error
+                                                try:
+                                                    await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred while sending a transcription chunk.")
+                                                except Exception as e:
+                                                    logger.error(f"Failed to send error message to user: {e}")
+                                    except Exception as e:
+                                        logger.error(f"Error in sending plain text messages: {e}")
+                                        # Optionally, inform the user about the error
+                                        try:
+                                            await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred while preparing the transcription messages.")
+                                        except Exception as e:
+                                            logger.error(f"Failed to send error message to user: {e}")
+                                        # Continue to send files even if sending messages fails
+
+                                # Proceed to send files as per your existing logic
+                                if self.config.getboolean('TranscriptionSettings', 'sendasfiles'):
+                                    for fmt, path in transcription_paths.items():
+                                        try:
+                                            with open(path, 'rb') as file:
+                                                await bot.send_document(chat_id=update.effective_chat.id, document=file)
+                                            logger.info(f"Sent {fmt} file to user {user_id}: {path}")
+                                        except Exception as e:
+                                            logger.error(f"Failed to send {fmt} file to user {user_id}: {path}, error: {e}")
+                                            # Optionally, inform the user
+                                            try:
+                                                await bot.send_message(chat_id=update.effective_chat.id, text=f"An error occurred while sending the {fmt} file.")
+                                            except Exception as e:
+                                                logger.error(f"Failed to send error message to user: {e}")
+
+                                # Mark the task as successful
+                                success = True
+
+                                # Clean up audio file if needed
+                                if not self.config.getboolean('TranscriptionSettings', 'keepaudiofiles'):
+                                    try:
+                                        os.remove(task)
+                                        logger.info(f"Deleted audio file: {task}")
+                                    except Exception as e:
+                                        logger.error(f"Failed to delete audio file {task}: {e}")
+
+                        except Exception as e:
+                            logger.error(f"An error occurred while processing the task: {e}")
+                            # Optionally, inform the user about the error
                             try:
-                                os.remove(task)
-                                logger.info(f"Deleted audio file: {task}")
-                            except Exception as e:
-                                logger.error(f"Failed to delete audio file {task}: {e}")
+                                await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred while processing your request.")
+                            except Exception as ex:
+                                logger.error(f"Failed to send error message to user: {ex}")
+
+                        finally:
+                            self.task_queue.task_done()
+
+                            # Check if completion message should be sent
+                            if success and notification_settings['send_completion_message']:
+                                try:
+                                    completion_message = notification_settings['completion_message']
+                                    await bot.send_message(chat_id=update.effective_chat.id, text=completion_message)
+                                    logger.info(f"Sent completion message to user ID {user_id}: {completion_message}")
+                                except Exception as e:
+                                    logger.error(f"Error sending completion message: {e}")
 
                 except Exception as e:
-                    logger.error(f"An error occurred while processing the task: {e}")
-                    # Optionally, inform the user about the error
-                    await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred while processing your request.")
-
-                finally:
-                    self.task_queue.task_done()
-
-                    # Check if completion message should be sent
-                    if success and notification_settings['send_completion_message']:
-                        completion_message = notification_settings['completion_message']
-                        await bot.send_message(chat_id=update.effective_chat.id, text=completion_message)
-                        logger.info(f"Sent completion message to user ID {user_id}: {completion_message}")
+                    logger.error(f"Unhandled exception in process_queue loop: {e}")
+                    # Optionally, sleep briefly to prevent tight looping
+                    await asyncio.sleep(0.1)
+            except Exception as e:
+                logger.error(f"Unhandled exception in process_queue: {e}")
+                # Prevent the loop from exiting
+                await asyncio.sleep(0.1)
 
     async def shutdown(self, signal, loop):
         """Cleanup tasks tied to the service's shutdown."""
