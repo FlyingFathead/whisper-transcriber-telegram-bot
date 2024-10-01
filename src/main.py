@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1702"
+version_number = "0.17021"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -474,19 +474,21 @@ class TranscriberBot:
                 f"<b>Current model in use:</b>\n<code>{current_model}</code>\n\n"
                 f"<b>Available models:</b>\n{models_list}\n\n"
                 "To change the model, use commands like:\n"
+                "<code>/model turbo</code> (newest model, 8x real-time)\n"
                 "<code>/model medium.en</code>\n"
-                "<code>/model large-v3</code>\n\n"
+                "<code>/model large-v3</code> (most precise, but slowest)\n\n"
                 "<b>Model Details:</b>\n"
                 "- <b>Tiny</b>: Fastest, uses ~1GB VRAM, about 32x faster than large.\n"
                 "- <b>Base</b>: Faster, uses ~1GB VRAM, about 16x faster than large.\n"
                 "- <b>Small</b>: Balanced, uses ~2GB VRAM, about 6x faster than large.\n"
                 "- <b>Medium</b>: More precise, uses ~5GB VRAM, about 2x faster than large.\n"
-                "- <b>Large</b>: Most precise, processes at real-time (1x speed), uses ~10GB VRAM.\n\n"
+                "- <b>Large</b>: Most precise, processes at real-time (1x speed), uses ~10GB VRAM.\n"
+                "- <b>Turbo (New!)</b>: Introduced in September 2024, near large-v3-level quality, 8x realtime speed, uses ~6GB VRAM. <b>Recommended by default.</b>\n\n"
                 "Note: '.en' models (e.g., 'tiny.en') are optimized for English and offer better accuracy for English audio. "
                 "As model size increases, the benefit of English optimization becomes less significant. Choose based on your "
                 "needs for speed, memory usage, and linguistic accuracy. "
                 "As a general guideline, larger models are more accurate but also slower. "
-                "I.e. best balance in speed vs. accuracy in English language is likely <code>medium.en</code>.",
+                "I.e. best balance in speed vs. accuracy in English language is likely either <code>turbo</code> or <code>medium.en</code>.",
                 parse_mode='HTML')
             return
 
