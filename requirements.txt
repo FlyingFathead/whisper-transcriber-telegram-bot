@@ -1,6 +1,7 @@
 python-telegram-bot>=21.5
 yt-dlp>=2024.8.6
-openai-whisper>=20231117
+openai-whisper>=20240930
+tiktoken>=0.7.0
 gputil>=1.4.0
 ffmpeg-python>=0.2.0
 pydub>=0.25.1

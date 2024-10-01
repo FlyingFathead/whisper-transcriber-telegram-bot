@@ -3,12 +3,13 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1658"
+version_number = "0.17"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import html
 import time
 import re
 import signal
@@ -95,7 +96,7 @@ class TranscriberBot:
         self.allowed_formats = [fmt.lower().strip() for fmt in self.allowed_formats]
 
         self.model = self.config.get('WhisperSettings', 'Model', fallback='medium.en')
-        self.valid_models = self.config.get('ModelSettings', 'ValidModels', fallback='tiny, base, small, medium, large').split(', ')
+        self.valid_models = self.config.get('ModelSettings', 'ValidModels', fallback='tiny, base, small, medium, large, turbo').split(', ')
 
         self.transcription_settings = {
             'includeheaderintranscription': self.config.getboolean('TranscriptionSettings', 'includeheaderintranscription', fallback=True),
@@ -263,15 +264,33 @@ class TranscriberBot:
                                     content = transcription_note + content  # Add transcription note
 
                                     # Define a buffer zone
-                                    buffer_zone = 100
-                                    max_message_length = 4096 - buffer_zone
+                                    buffer_zone = 300
+                                    max_message_length = 4000 - buffer_zone
 
                                     # Split the content safely into chunks
                                     chunks = safe_split_message(content, max_length=max_message_length)
 
                                     for i, chunk in enumerate(chunks):
-                                        await bot.send_message(chat_id=update.effective_chat.id, text=chunk, parse_mode='HTML')
+                                        # Escape the chunk
+                                        escaped_chunk = html.escape(chunk)
+                                        # Check if escaped chunk exceeds Telegram's limit
+                                        if len(escaped_chunk) > 4096:
+                                            # Further split the chunk if necessary
+                                            sub_chunks = safe_split_message(chunk, max_length=2000)
+                                            for sub_chunk in sub_chunks:
+                                                escaped_sub_chunk = html.escape(sub_chunk)
+                                                await bot.send_message(chat_id=update.effective_chat.id, text=escaped_sub_chunk, parse_mode='HTML')
+                                        else:
+                                            await bot.send_message(chat_id=update.effective_chat.id, text=escaped_chunk, parse_mode='HTML')
                                         logger.info(f"Sent message chunk: {i + 1}")
+
+                                    # // (old method)
+                                    # chunks = safe_split_message(content, max_length=max_message_length)
+
+                                    # for i, chunk in enumerate(chunks):
+                                    #     await bot.send_message(chat_id=update.effective_chat.id, text=chunk, parse_mode='HTML')
+                                    #     logger.info(f"Sent message chunk: {i + 1}")
+
                             except Exception as e:
                                 logger.error(f"Error in sending plain text message: {e}")
                                 # Continue to send files even if sending messages fails

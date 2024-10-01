@@ -12,6 +12,8 @@ The bot supports a broad range of media sites via `yt-dlp` ([listed here](https:
 
 ## Features
 
+- **(NEW!)** Supports OpenAI's newest `turbo` model of the Whisper `v3` series (Oct 1, 2024)
+   - `turbo` has a 8x transcription speed with only 6GB VRAM usage
 - 🎥 Downloads and processes media URLs from any source supported by `yt-dlp`.
    - _(can be configured to use cookies in `config.ini`)_
 - 📲 Can receive Telegram audio messages as well as files, i.e. `.mp3` and `.wav` for transcription.
@@ -123,6 +125,7 @@ After launching the bot, you can interact with it via Telegram:
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.17 - (1. Oct 2024) [Now supports OpenAI's brand new Whisper v3 turbo model!](https://github.com/openai/whisper/blob/main/model-card.md)
 - v0.1658 - `UpdateSettings` setting added to `config.ini` to update your bot on startup (can be set to `True` or `False`), as i.e. `yt-dlp` is highly recommended to be kept up to date constantly. You can modify the command line string to whatever modules you want to check updates on during startup.
    - fixed a parsing bug in YouTube urls
    - bot now announces successful downloads

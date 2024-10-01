@@ -787,7 +787,8 @@ model_speeds = {
     'large': 1,
     'large-v1': 1,
     'large-v2': 1,
-    'large-v3': 1
+    'large-v3': 1,
+    'turbo': 8
 }
 
 def estimate_transcription_time(model, audio_duration):
