@@ -4,9 +4,13 @@ A local Whisper AI transcriber bot for Telegram, utilizing a local GPU or CPU fo
 
 **Runs on the latest Whisper v3 `turbo` model by default. (Released Sept 30, 2024)**
 
-The bot has been written in Python and works on Python `3.10+`, tested up to `3.12.2`. It's designed to transcribe audio from various media source, such as URLs supported by `yt-dlp`, or via Telegram's audio messages and over audio file uploads (mp3, wav).
+The bot has been written in Python and works on Python `3.10+`, tested up to Python version `3.12.2`.
 
-Sites supported by `yt-dlp` are [listed here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). Supported audio/video file uploads can be configured separately. Compatible with all `ffmpeg` supported formats), with up to `20MB` file sizes as supported by Telegram in their bot API.
+Designed for transcribing audio from various media source, such as URLs supported by `yt-dlp`, or via Telegram's audio messages or over media file uploads on Telegram (`.mp3`, `.wav`, `.ogg`, `.flac`, etc).
+
+Sites supported by `yt-dlp` are [listed here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). Supported audio/video file uploads can be configured separately. 
+
+Compatible with all `ffmpeg` supported formats), with up to `20MB` file sizes as supported by Telegram in their bot API.
 
 Can be safely installed and deployed with [Docker](https://www.docker.com/) by using the included `Dockerfile`.
 
