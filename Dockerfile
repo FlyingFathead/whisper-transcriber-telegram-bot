@@ -4,6 +4,7 @@ FROM python:slim-bookworm
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     git \
+    gcc \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
