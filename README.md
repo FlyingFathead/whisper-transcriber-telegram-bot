@@ -92,24 +92,52 @@ To set up the Whisper Transcriber Telegram Bot, follow these steps:
 
 ---
 
-1. To enable GPU processing inside Docker files, install the NVIDIA Container Toolkit in i.e. Ubuntu **on the host machine** with:
+To enable GPU processing inside Docker files, install the NVIDIA Container Toolkit in i.e. Ubuntu **(on the host machine)** with these steps:
+
+1. **Add NVIDIA GPG Key and Repository**:
+   Use the following commands to configure the repository securely with the GPG key:
 
    ```bash
-   distribution=$(. /etc/os-release;echo $ID$VERSION_ID) && \
-   curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add - && \
-   curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg &&
+   curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+   sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+   sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+   ```
 
+2. **Update the Package List**:
+   Run the following to refresh your package list:
+   ```bash
    sudo apt-get update
-   sudo apt-get install -y nvidia-docker2
    ```
 
-2. Restart Docker: After installing the NVIDIA Docker toolkit, restart the Docker daemon:
+3. **Install the NVIDIA Container Toolkit**:
+   Install the toolkit using:
+   ```bash
+   sudo apt-get install -y nvidia-container-toolkit
    ```
+
+4. **Configure Docker to Use NVIDIA Runtime**:
+   Configure the NVIDIA runtime for Docker:
+   ```bash
+   sudo nvidia-ctk runtime configure --runtime=docker
+   ```
+
+5. **Restart Docker**:
+   Restart the Docker service to apply the changes:
+   ```bash
    sudo systemctl restart docker
    ```
 
+6. **Test the Setup**:
+   You can verify if the setup is working correctly by running a base CUDA container:
+   ```bash
+   sudo docker run --rm --runtime=nvidia --gpus all nvidia/cuda:11.6.2-base-ubuntu20.04 nvidia-smi
+   ```
+
+If everything is set up correctly, you should see your GPUs listed.
+
 ---
-#### Option 1: Pull the prebuilt image from GHCR
+#### Dockerfile Install Option 1: Pull the prebuilt image from GHCR
 
 Just grab the latest pre-built version with:
 
@@ -117,7 +145,7 @@ Just grab the latest pre-built version with:
    docker pull ghcr.io/flyingfathead/whisper-transcriber-telegram-bot:latest
    ```
 ---
-#### Option 2: Build the Docker image yourself
+#### Dockerfile Install Option 2: Build the Docker image yourself
 
 If there's something wrong with GHCR's prebuilt image, you can also build the Docker image yourself.
 
