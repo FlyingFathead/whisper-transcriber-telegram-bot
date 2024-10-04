@@ -88,7 +88,17 @@ To set up the Whisper Transcriber Telegram Bot, follow these steps:
 - Docker installed on your machine.
 - Docker Compose (optional, for ease of handling environment variables and settings).
 
-### Building the Docker Image
+#### Option 1: Pull the prebuilt image from GHCR
+
+Just grab the latest version with:
+
+   ```bash
+   docker pull ghcr.io/flyingfathead/whisper-transcriber-telegram-bot:latest
+   ```
+
+#### Option 2: Build the Docker image yourself
+
+If there's something wrong with GHCR's prebuilt image, you can also build the Docker image yourself.
 
 1. Navigate to the root directory of the project where the `Dockerfile` is located.
 2. Build the Docker image using the following command:
@@ -104,7 +114,7 @@ To set up the Whisper Transcriber Telegram Bot, follow these steps:
 To run the bot using Docker:
 
 ```bash
-docker run --name whisper-bot -d \
+docker run --name whisper-transcriber-telegram-bot -d \
   -e TELEGRAM_BOT_TOKEN='YourTelegramBotToken' \
   -v $(pwd)/config:/app/config \
   -v whisper_cache:/root/.cache/whisper \
@@ -217,4 +227,4 @@ Contributions are welcome! If you have suggestions for improvements or bug fixes
 
 - [FlyingFathead](https://github.com/FlyingFathead) - Project creator
 - ChaosWhisperer - Contributions to the Whisper integration and documentation
-- Thanks for additional code contributions: [GRbit](https://github.com/GRbit) (Dockerization)
+- Thanks for additional code contributions: [GRbit](https://github.com/GRbit) (Dockerization), [jonmjr](https://github.com/jonmrjr) (more Dockerization)
