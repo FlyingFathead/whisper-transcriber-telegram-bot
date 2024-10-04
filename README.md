@@ -161,10 +161,10 @@ If there's something wrong with GHCR's prebuilt image, you can also build the Do
 ---
 ### Running the Bot Using Docker
 
-To run the bot using Docker:
+To run the bot using Docker (may require `sudo`, depending on whether or not you're using a `docker` group or not):
 
 ```bash
-docker run --name whisper-transcriber-telegram-bot -d \
+docker run --gpus all --name whisper-transcriber-telegram-bot -d \
   -e TELEGRAM_BOT_TOKEN='YourTelegramBotToken' \
   -v whisper_cache:/root/.cache/whisper \
   ghcr.io/flyingfathead/whisper-transcriber-telegram-bot:latest
