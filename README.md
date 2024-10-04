@@ -145,6 +145,10 @@ After launching the bot, you can interact with it via Telegram (message `@whatev
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1705 - Dockerized pre-builds; thanks to [jonmjr](https://github.com/jonmrjr) for assistance!
+   - updated `src/utils/bot_token.py` to query for a bot token if it's not found from either env vars or from the file
+   - can be useful when running the bot in Docker containers
+   - this option can be set on/off in `config.ini` with `AskForTokenIfNotFound = True` (default is `true`)
 - v0.1704 - Token logic / `bot_token.py` updates; added `config.ini` preferences for reading the bot token
    - `preferenvforbottoken = True` is now on by default to prefer the environment variable entry for the bot token.
    - set to `false` to prefer `config/bot_token.txt` over the environment variable
