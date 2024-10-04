@@ -81,17 +81,37 @@ To set up the Whisper Transcriber Telegram Bot, follow these steps:
    python src/main.py
    ```
 
+---
 ## Dockerized Installation
+---
 
 ### Prerequisites
 
-- Docker installed on your machine.
-- Docker Compose (optional, for ease of handling environment variables and settings).
+- Docker installed on your machine
+- If you want to run your Whisper transcripts GPU accelerated with CUDA (recommended), you'll need a Nvidia GPU and the NVIDIA Container Toolkit installed on the host machine that is running the Docker container
+
+---
+
+1. To enable GPU processing inside Docker files, install the NVIDIA Container Toolkit in i.e. Ubuntu **on the host machine** with:
+
+   ```bash
+   distribution=$(. /etc/os-release;echo $ID$VERSION_ID) && \
+   curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add - && \
+   curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+
+   sudo apt-get update
+   sudo apt-get install -y nvidia-docker2
+   ```
+
+2. Restart Docker: After installing the NVIDIA Docker toolkit, restart the Docker daemon:
+   ```
+   sudo systemctl restart docker
+   ```
 
 ---
 #### Option 1: Pull the prebuilt image from GHCR
 
-Just grab the latest version with:
+Just grab the latest pre-built version with:
 
    ```bash
    docker pull ghcr.io/flyingfathead/whisper-transcriber-telegram-bot:latest
