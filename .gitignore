@@ -31,3 +31,7 @@ audio/
 
 # virtual environments
 venv/
+
+# log files
+*.log
+
