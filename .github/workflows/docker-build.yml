@@ -37,7 +37,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.REGISTRY }}/$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]'):latest
-            ${{ env.REGISTRY }}/$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]'):${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner | toLower }}/${{ github.event.repository.name | toLower }}:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner | toLower }}/${{ github.event.repository.name | toLower }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
