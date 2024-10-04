@@ -135,6 +135,12 @@ After launching the bot, you can interact with it via Telegram (message `@whatev
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1704 - Token logic / `bot_token.py` updates; added `config.ini` preferences for reading the bot token
+   - `preferenvforbottoken = True` is now on by default to prefer the environment variable entry for the bot token.
+   - set to `false` to prefer `config/bot_token.txt` over the environment variable
+   - `AllowBotTokenFallback = True` to allow fallbacks (whether from the env var to `bot_token.txt` or the other way around)
+   - set to `false` to strictly disallow fallback bot API token checking
+   - improved error catching + exit logic when the token is not found
 - v0.1703 - included and updated welcome message (`/start`)
 - v0.17021 - updated model info in `/model`
 - v0.1702 - prevent queue hang cases with new method
