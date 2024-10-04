@@ -7,7 +7,8 @@ from pathlib import Path
 import sys
 
 # Set up basic logging configuration
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+# logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler(sys.stdout)])
 
 class BotTokenError(Exception):
     """Custom exception for bot token retrieval failures."""
