@@ -131,7 +131,7 @@ To enable GPU processing inside Docker files, install the NVIDIA Container Toolk
 6. **Test the Setup**:
    You can verify if the setup is working correctly by running a base CUDA container:
    ```bash
-   sudo docker run --rm --runtime=nvidia --gpus all nvidia/cuda:11.6.2-base-ubuntu20.04 nvidia-smi
+   sudo docker run --rm --runtime=nvidia --gpus all nvidia/cuda:11.6.2-base-ubuntu22.04 nvidia-smi
    ```
 
 If everything is set up correctly, you should see your GPUs listed.
