@@ -1,4 +1,4 @@
-# ~~~ Enhanced Read Telegram Bot Token with Configurable Fallback, Appropriate Logging, and Validity Check ~~~
+# ~~~ Enhanced Read Telegram Bot Token with Configurable Fallback, Appropriate Logging, and Validity Check, Docker Detection ~~~
 
 import os
 import configparser
@@ -13,6 +13,26 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 class BotTokenError(Exception):
     """Custom exception for bot token retrieval failures."""
     pass
+
+def is_running_in_docker():
+    # Check for .dockerenv file
+    if Path("/.dockerenv").exists():
+        logging.info("Docker environment detected based on .dockerenv file.")
+        return True
+    # Check for control groups
+    try:
+        with open("/proc/self/cgroup", "rt") as f:
+            if any("docker" in line for line in f):
+                logging.info("Docker environment detected based on control groups.")
+                return True
+    except Exception:
+        pass
+    # Check for Docker-specific environment variable
+    if os.getenv("container", None) == "docker":
+        logging.info("Docker environment detected based on environment variable.")
+        return True
+    logging.info("No Docker environment detected.")
+    return False
 
 def get_bot_token():
     try:
@@ -40,6 +60,11 @@ def get_bot_token():
         prefer_env = config.getboolean('DEFAULT', 'PreferEnvForBotToken', fallback=True)
         allow_fallback = config.getboolean('DEFAULT', 'AllowFallback', fallback=True)
         ask_for_token = config.getboolean('DEFAULT', 'AskForTokenIfNotFound', fallback=True)
+
+        # Disable asking for token if running inside Docker
+        if is_running_in_docker() or os.getenv("RUNNING_IN_DOCKER") == "true":
+            logging.info("Running inside Docker. Disabling token prompt.")
+            ask_for_token = False
 
         invalid_tokens = [
             'YourTelegramBotToken',
@@ -79,7 +104,7 @@ def get_bot_token():
                 return None
 
         def query_user_for_token():
-            logging.info("No valid bot token found. Please obtain a Telegram bot token from @BotFather on Telegram and paste it below.")
+            logging.info("No valid bot token found. Please obtain a Telegram bot token from @BotFather on Telegram (https://t.me/BotFather) and paste it below.")
             logging.info("Press Enter without typing anything to quit.")
             token = input("Your Telegram bot token: ").strip()
             if token and is_valid_token(token):
@@ -93,6 +118,7 @@ def get_bot_token():
                     return None
             else:
                 logging.error("No valid token entered. Exiting application.")
+                logging.info("No valid bot token found. Please obtain a Telegram bot token from @BotFather on Telegram (https://t.me/BotFather) and either set it as an environment variable (`TELEGRAM_BOT_TOKEN`) or place it under `config/bot_token.txt`.")
                 sys.exit(1)
 
         # Retrieval logic based on configuration

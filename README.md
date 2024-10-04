@@ -88,6 +88,7 @@ To set up the Whisper Transcriber Telegram Bot, follow these steps:
 - Docker installed on your machine.
 - Docker Compose (optional, for ease of handling environment variables and settings).
 
+---
 #### Option 1: Pull the prebuilt image from GHCR
 
 Just grab the latest version with:
@@ -95,7 +96,7 @@ Just grab the latest version with:
    ```bash
    docker pull ghcr.io/flyingfathead/whisper-transcriber-telegram-bot:latest
    ```
-
+---
 #### Option 2: Build the Docker image yourself
 
 If there's something wrong with GHCR's prebuilt image, you can also build the Docker image yourself.
@@ -109,6 +110,7 @@ If there's something wrong with GHCR's prebuilt image, you can also build the Do
 
    This command builds a Docker image named `whisper-transcriber-telegram-bot` based on the instructions in your `Dockerfile`.
 
+---
 ### Running the Bot Using Docker
 
 To run the bot using Docker:
@@ -145,6 +147,10 @@ After launching the bot, you can interact with it via Telegram (message `@whatev
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1706 - Disable asking for token if running inside Docker
+   - by default, the app will ask for the token if it's not found, unless Dockerized
+   - can be better for headless use case scenarios where you need the error message rather than a prompt for the bot token
+   - `Dockerfile` now has `RUNNING_IN_DOCKER` environment variable set for detection
 - v0.1705 - Dockerized pre-builds; thanks to [jonmjr](https://github.com/jonmrjr) for assistance!
    - updated `src/utils/bot_token.py` to query for a bot token if it's not found from either env vars or from the file
    - can be useful when running the bot in Docker containers

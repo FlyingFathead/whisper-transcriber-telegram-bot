@@ -23,6 +23,9 @@ COPY config config
 # Set `PYTHONUNBUFFERED` to `1` for better logging/debugging
 ENV PYTHONUNBUFFERED=1
 
+# Set environment variable to indicate running in Docker
+ENV RUNNING_IN_DOCKER=true
+
 # Optional: List files and print working directory for debugging
 # (Comment these out in production)
 # RUN ls -lsa
