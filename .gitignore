@@ -26,8 +26,13 @@ audio/
 
 # ignore potential transcribed files
 *.mp3
+*.wav
+*.aiff
+*.aac
+*.mp4
 *.vtt
 *.srt
+*.part
 
 # virtual environments
 venv/
