@@ -281,6 +281,10 @@ After launching the bot, you can interact with it via Telegram (message `@whatev
 
 Contributions are welcome! If you have suggestions for improvements or bug fixes, please open an issue or submit a pull request.
 
+## License
+
+Licensed under the MIT License. See the [LICENSE](./LICENSE) file for more details.
+
 ## Credits
 
 - [FlyingFathead](https://github.com/FlyingFathead) - Project creator
