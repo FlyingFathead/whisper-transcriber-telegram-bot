@@ -12,6 +12,9 @@ config/bot_token.txt
 __pycache__/
 *.pyc
 
+# build directory
+build/
+
 # audio messages directory
 audio_messages/
 
