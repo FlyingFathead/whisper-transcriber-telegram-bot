@@ -197,7 +197,7 @@ After launching your bot successfully, you can interact with it via Telegram (se
 
 ## Changes
 - v0.1708 - Direct video file uploads are now available
-   - (for spam/abuse prevention, they're disabled by default, see `config.ini`)
+   - (to prevent abuse, they're disabled by default, see `config.ini`)
 - v0.1707 - New `config.ini` option: add sites that require full video download
    - some media sites don't work well with `yt-dlp`'s audio-only download method
    - there are now two new options in `config.ini` under `[YTDLPSettings]`:
