@@ -202,7 +202,10 @@ After launching your bot successfully, you can interact with it via Telegram (se
    - `download_original_video_domains = site1.com, site2.com, site3.com`
    - at the moment it's used for media platforms that have had reported issues during testing
    - when active, a comma-separated list is used to check up on media sites that require their contents to be downloaded as the original video instead of audio-only
-   - _(the tradeoff is obviously download size and hence speed; the audio-only method is usually the fastest and should be preferred for most popular sites, hence only add problematic sites to the video-only list)_   
+   - _(the tradeoff is obviously download size and hence speed; the audio-only method is usually the fastest and should be preferred for most popular sites, hence only add problematic sites to the video-only list)_
+   - using worst available video quality (with audio in it) is usually recommended
+   - video quality selection is in `config.ini`: `use_worst_video_quality = true` (default is true, set to false if it doesn't work for your setup)
+   - again, the default setup in this version should work for most users
 - v0.1706 - Disable asking for token if running inside Docker
    - by default, the app will ask for the token if it's not found, unless Dockerized
    - can be better for headless use case scenarios where you need the error message rather than a prompt for the bot token
