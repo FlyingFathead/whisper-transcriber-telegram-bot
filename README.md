@@ -21,7 +21,8 @@ Can be safely installed and deployed with [Docker](https://www.docker.com/) by u
 - 🎥 Downloads and processes media URLs from any source supported by `yt-dlp`
    - _(can be configured to use `cookies.txt` in `config.ini` for better availability)_
 - 📲 Can receive Telegram audio messages as well as files, i.e. `.mp3` and `.wav` for transcription
-   - _(all other `ffmpeg` supported formats also available, configurable via `config.ini`)_
+   - Direct video file uploads in supported media formats is also supported
+   - _(all other `ffmpeg` supported formats also available to be added, configurable via `config.ini`)_
 - 🤖 Uses a local Whisper model from the `openai-whisper` package for transcription
    - _(no API required, use your own PC & available CUDA GPU!)_
 - 🖥️ Automatically uses `GPUtil` to map out the best available CUDA-enabled local GPU
@@ -195,6 +196,8 @@ After launching your bot successfully, you can interact with it via Telegram (se
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1708 - Direct video file uploads are now available
+   - (for spam/abuse prevention, they're disabled by default, see `config.ini`)
 - v0.1707 - New `config.ini` option: add sites that require full video download
    - some media sites don't work well with `yt-dlp`'s audio-only download method
    - there are now two new options in `config.ini` under `[YTDLPSettings]`:

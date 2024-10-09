@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1707"
+version_number = "0.1708"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -95,6 +95,10 @@ class TranscriberBot:
         self.allowed_formats = self.config.get('AllowedFileFormats', 'allowed_formats', fallback='mp3, wav, mp4').split(',')
         self.allowed_formats = [fmt.lower().strip() for fmt in self.allowed_formats]
 
+        # Allow video files (true/false)
+        self.allow_video_files = self.config.getboolean('AudioSettings', 'allowvideofiles', fallback=False)
+        logger.info(f"allow_video_files: {self.allow_video_files}")
+
         self.model = self.config.get('WhisperSettings', 'Model', fallback='medium.en')
         self.valid_models = self.config.get('ModelSettings', 'ValidModels', fallback='tiny, base, small, medium, large, turbo').split(', ')
 
@@ -112,17 +116,27 @@ class TranscriberBot:
         self.user_models = {} # Use a dictionary to manage models per user.
         self.user_models_lock = asyncio.Lock()  # Lock for handling user_models dictionary
 
+        # Read the maximum file size setting
+        self.max_file_size_mb = self.config.getint('AudioSettings', 'max_file_size_mb', fallback=20)
+        self.max_file_size_bytes = self.max_file_size_mb * 1024 * 1024  # Convert MB to bytes
+        logger.info(f"Maximum file size set to: {self.max_file_size_mb} MB")
+
+        # Define directories for storing video messages
+        self.video_messages_dir = "video_messages"
+        os.makedirs(self.video_messages_dir, exist_ok=True)
+
         # Define output directory for transcriptions
         self.output_dir = "transcriptions"
         os.makedirs(self.output_dir, exist_ok=True)
 
     async def start_command(self, update: Update, context: CallbackContext) -> None:
+        max_file_size_mb = self.max_file_size_mb  # Use the configured value
         welcome_message = (
             "👋 <b>Welcome to the Whisper Transcriber Bot!</b>\n\n"
             "I'm here to transcribe audio from various sources for you.\n\n"
             "📌 <b>How Does This Work?</b>\n"
             "- Send me a link to a supported media URL (e.g., YouTube).\n"
-            "- Or, send an audio file (max 20MB in size), and I'll transcribe it.\n\n"
+            f"- Or, send an audio file (max {max_file_size_mb} MB in size), and I'll transcribe it.\n\n"
             "💡 <b>Commands You Can Use:</b>\n"
             "- /start: Show this welcome message.\n"
             "- /help: Get detailed help on how to use this service.\n"
@@ -424,30 +438,53 @@ class TranscriberBot:
         models_list = ', '.join(self.valid_models)  # Dynamically generate the list of valid models
         allowed_formats_list = ', '.join(self.allowed_formats)  # Get the list of allowed formats
 
-        # Access the 'allowaudiofiles' and 'allowvoicemessages' settings
+        # Access the settings
         allow_audio_files = self.config.getboolean('AudioSettings', 'allowaudiofiles', fallback=True)
         allow_voice_messages = self.config.getboolean('AudioSettings', 'allowvoicemessages', fallback=True)
+        allow_video_files = self.config.getboolean('AudioSettings', 'allowvideofiles', fallback=False)  # Read the new setting
 
         # Build the file upload info based on settings
         file_upload_info = ""
-        if allow_audio_files and allow_voice_messages:
+        max_file_size_mb = self.max_file_size_mb  # Use the configured value
+
+        if allow_audio_files and allow_voice_messages and allow_video_files:
             file_upload_info = (
-                "- Or, send an audio message or an audio file to have its audio transcribed. (maximum file size: 20MB)\n\n"
-                f"<b>Currently supported file formats:</b> {allowed_formats_list}\n"
+                f"- Or, send an audio message, an audio file, or a video file to have its audio transcribed. (maximum file size: {max_file_size_mb} MB)\n\n"
+                f"<b>Currently supported audio file formats:</b> {allowed_formats_list}\n"
             )
-        elif allow_audio_files and not allow_voice_messages:
+        elif allow_audio_files and allow_voice_messages and not allow_video_files:
             file_upload_info = (
-                "- Or, send an audio file to have its audio transcribed. (maximum file size: 20MB)\n\n"
-                f"<b>Currently supported file formats:</b> {allowed_formats_list}\n"
+                f"- Or, send an audio message or an audio file to have its audio transcribed. (maximum file size: {max_file_size_mb} MB)\n\n"
+                f"<b>Currently supported audio file formats:</b> {allowed_formats_list}\n"
             )
-        elif not allow_audio_files and allow_voice_messages:
+        elif allow_audio_files and not allow_voice_messages and allow_video_files:
             file_upload_info = (
-                "- Or, send an audio message to have its audio transcribed. (maximum file size: 20MB)\n"
-                "- Note: Direct file uploads are currently disabled.\n"
+                f"- Or, send an audio file or a video file to have its audio transcribed. (maximum file size: {max_file_size_mb} MB)\n\n"
+                f"<b>Currently supported audio file formats:</b> {allowed_formats_list}\n"
+            )
+        elif not allow_audio_files and allow_voice_messages and allow_video_files:
+            file_upload_info = (
+                f"- Or, send an audio message or a video file to have its audio transcribed. (maximum file size: {max_file_size_mb} MB)\n"
+                f"- Note: Direct audio file uploads are currently disabled.\n"
+            )
+        elif allow_audio_files and not allow_voice_messages and not allow_video_files:
+            file_upload_info = (
+                f"- Or, send an audio file to have its audio transcribed. (maximum file size: {max_file_size_mb} MB)\n\n"
+                f"<b>Currently supported audio file formats:</b> {allowed_formats_list}\n"
+            )
+        elif not allow_audio_files and allow_voice_messages and not allow_video_files:
+            file_upload_info = (
+                f"- Or, send an audio message to have its audio transcribed. (maximum file size: {max_file_size_mb} MB)\n"
+                f"- Note: Direct audio file uploads are currently disabled.\n"
+            )
+        elif not allow_audio_files and not allow_voice_messages and allow_video_files:
+            file_upload_info = (
+                f"- Or, send a video file to have its audio transcribed. (maximum file size: {max_file_size_mb} MB)\n"
+                f"- Note: Direct audio file uploads and audio messages are currently disabled.\n"
             )
         else:
             file_upload_info = (
-                "- Note: Direct file uploads and audio messages are currently disabled.\n"
+                f"- Note: Direct file uploads and audio messages are currently disabled.\n"
             )
 
         help_text = f"""<b>Welcome to the Whisper Transcriber Bot!</b>
@@ -473,10 +510,10 @@ class TranscriberBot:
     {models_list}
 
     <b>Bot code by FlyingFathead.</b>
-    Source code on <a href='https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/'>GitHub</a>.
+    Source code: <a href='https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/'>GitHub</a>.
 
     <b>Disclaimer:</b>
-    The original author is NOT responsible for how this bot is utilized. All code and outputs are provided 'AS IS' without warranty of any kind. Users assume full responsibility for the operation and output of the bot. This applies to both legal and ethical responsibilities. Use at your own risk.
+    The original author of this program is NOT responsible for how this service is utilized. All code and outputs are provided 'AS IS' without warranty of any kind. Users assume full responsibility for the operation and output of the bot. This applies to both legal and ethical responsibilities. Use at your own risk.
     """
         await update.message.reply_text(help_text, parse_mode='HTML')
 
@@ -545,6 +582,7 @@ class TranscriberBot:
         except subprocess.CalledProcessError as e:
             logger.error(f"Error converting voice message: {e}")
 
+    # // audio file handler
     async def handle_audio_file(self, update: Update, context: CallbackContext) -> None:
         logger.info("handle_audio_file called.")
 
@@ -577,7 +615,8 @@ class TranscriberBot:
         try:
             # Check file size before downloading
             file_size = file_info.file_size
-            if file_size > 20 * 1024 * 1024:  # 20 MB in bytes
+            # if file_size > 20 * 1024 * 1024:  # 20 MB in bytes
+            if file_size > self.max_file_size_bytes:            
                 await update.message.reply_text(
                     "The file is too large to process. "
                     "Telegram bots can only download files up to 20 MB in size. "
@@ -617,6 +656,74 @@ class TranscriberBot:
         except Exception as e:
             logger.error(f"Exception in handle_audio_file: {e}")
             await update.message.reply_text("An error occurred while processing your file.")
+
+    # // video file handler
+    async def handle_video_file(self, update: Update, context: CallbackContext) -> None:
+        logger.info("handle_video_file called.")
+
+        user_id = update.effective_user.id
+
+        # Check if video file uploads are allowed
+        if not self.allow_video_files:
+            await update.message.reply_text(
+                "Direct video uploads are currently disabled. "
+                "Please send audio files only, or upload your video to a supported media platform and send the link."
+            )
+            logger.info("Video processing is not allowed according to config.")
+            return
+
+        # Proceed to handle the video file
+        video = update.message.video
+
+        try:
+            # Check file size before downloading
+            file_size = video.file_size
+            if file_size > self.max_file_size_bytes:
+                await update.message.reply_text(
+                    f"The video file is too large to process. "
+                    f"Maximum allowed file size is {self.max_file_size_mb} MB. "
+                    "Please send a smaller file or provide a link to the video."
+                )
+                logger.warning(f"Video file is too big: {file_size} bytes.")
+                return
+
+            # Proceed with downloading the video file
+            file = await context.bot.get_file(video.file_id)
+            file_name = video.file_name or f"{video.file_unique_id}.mp4"
+            file_extension = file_name.split('.')[-1].lower()
+            video_file_path = os.path.join(self.video_messages_dir, f'{file.file_unique_id}.{file_extension}')
+            await file.download_to_drive(video_file_path)
+            logger.info(f"Video file downloaded to {video_file_path}")
+
+            # Extract audio from the video file using ffmpeg
+            audio_file_path = os.path.join(self.audio_messages_dir, f'{file.file_unique_id}.mp3')
+            try:
+                subprocess.run(['ffmpeg', '-i', video_file_path, '-vn', '-acodec', 'libmp3lame', audio_file_path], check=True)
+                logger.info(f"Extracted audio from video file: {audio_file_path}")
+
+                # Queue the audio file for transcription
+                await self.task_queue.put((audio_file_path, context.bot, update))
+                queue_length = self.task_queue.qsize()
+                response_text = (
+                    "Your request is next and is currently being processed."
+                    if queue_length == 1
+                    else f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
+                )
+                await update.message.reply_text(response_text)
+                logger.info(f"Audio file queued for transcription. Queue length: {queue_length}")
+
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Error extracting audio from video file: {e}")
+                await update.message.reply_text("An error occurred while extracting audio from the video.")
+            finally:
+                # Clean up the video file if needed
+                if os.path.exists(video_file_path):
+                    os.remove(video_file_path)
+                    logger.info(f"Deleted video file: {video_file_path}")
+
+        except Exception as e:
+            logger.error(f"Exception in handle_video_file: {e}")
+            await update.message.reply_text("An error occurred while processing your video file.")
 
     async def info_command(self, update: Update, context: CallbackContext) -> None:
         user_id = update.effective_user.id
@@ -668,6 +775,9 @@ class TranscriberBot:
                 self.application.add_handler(MessageHandler(filters.AUDIO, self.handle_audio_file))
                 self.application.add_handler(MessageHandler(filters.VOICE, self.handle_voice_message))
                 self.application.add_handler(MessageHandler(filters.Document.ALL, self.handle_audio_file))
+
+                # Add this line to handle video messages
+                self.application.add_handler(MessageHandler(filters.VIDEO, self.handle_video_file))
 
                 # Add generic message handler last
                 self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
