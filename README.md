@@ -22,7 +22,7 @@ Can be safely installed and deployed with [Docker](https://www.docker.com/) by u
    - _(can be configured to use `cookies.txt` in `config.ini` for better availability)_
 - 📲 Can receive Telegram audio messages as well as files, i.e. `.mp3` and `.wav` for transcription
    - Direct video file uploads in supported media formats is also supported
-   - _(all other `ffmpeg` supported formats also available to be added, configurable via `config.ini`)_
+   - _(all other `ffmpeg` supported formats also configurable via `config.ini`)_
 - 🤖 Uses a local Whisper model from the `openai-whisper` package for transcription
    - _(no API required, use your own PC & available CUDA GPU!)_
 - 🖥️ Automatically uses `GPUtil` to map out the best available CUDA-enabled local GPU
