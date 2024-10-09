@@ -33,17 +33,10 @@ from utils.language_selection import ask_language
 from config_loader import ConfigLoader
 config = ConfigLoader.get_config()
 
-# # Load config
-# config = configparser.ConfigParser()
-# config.read('config/config.ini')
-# send_as_files = config.getboolean('TranscriptionSettings', 'sendasfiles', fallback=True)
-# send_as_messages = config.getboolean('TranscriptionSettings', 'sendasmessages', fallback=False)
-
 # Toggle this to use the full description or a snippet.
-USE_SNIPPET_FOR_DESCRIPTION = False
-
+USE_SNIPPET_FOR_DESCRIPTION = config.getboolean('VideoDescriptionSettings', 'use_snippet_for_description', fallback=False)
 # If we're using a snippet of the description, maximum number of lines to include
-DESCRIPTION_MAX_LINES = 30
+DESCRIPTION_MAX_LINES = config.getint('VideoDescriptionSettings', 'description_max_lines', fallback=30)
 
 # Output directory for transcriptions; create if doesn't exist
 output_dir = "transcriptions"
@@ -273,7 +266,7 @@ async def download_audio(url, audio_path):
 
         command = [
             "yt-dlp",
-            "--verbose",
+            # "--verbose", # uncomment to set verbose
             "--format", selected_format_id,
             "--output", video_output_template,
             url
@@ -365,140 +358,6 @@ async def download_audio(url, audio_path):
         if not os.path.exists(audio_path):
             raise Exception(f"Failed to download audio: {audio_path}")
         logger.info(f"Audio downloaded successfully: {audio_path}")
-
-# // audio download (OLD method)
-# async def download_audio(url, audio_path):
-#     config = ConfigLoader.get_config()
-#     ytdlp_settings = ConfigLoader.get_ytdlp_domain_settings()
-#     use_cookies = config.getboolean('YTDLPSettings', 'use_cookies', fallback=False)
-#     cookies_file = config.get('YTDLPSettings', 'cookies_file', fallback='config/cookies.txt')
-    
-#     parsed_url = urlparse(url)
-#     domain = parsed_url.netloc.lower()
-#     if domain.startswith('www.'):
-#         domain = domain[4:]  # Remove 'www.'
-
-#     should_download_video = ytdlp_settings['active'] and domain in ytdlp_settings['domains']
-
-#     command = [
-#         "yt-dlp",
-#         "--cache-dir", ".cache",
-#     ]
-
-#     if use_cookies and os.path.exists(cookies_file):
-#         command.extend(["--cookies", cookies_file])
-
-#     if should_download_video:
-#         # Use a separate base path without the .mp3 extension
-#         base_output_path = audio_path.replace('.mp3', '')  # e.g., audio/12345_1618033988
-#         video_output_template = f"{base_output_path}.%(ext)s"  # e.g., audio/12345_1618033988.mp4
-#         command.extend([
-#             "--verbose",  # Add verbose flag            
-#             "--external-downloader", "aria2c",
-#             # "--cache-dir", ".cache",
-#             # things you could try with problematic sites, may not always work:
-#             "--external-downloader-args", "split=1,min-split-size=1M", # 1M splits
-#             # "--format", 'b[height<=480]'  # Prefer the lowest quality format
-#             # "--format", 'worstvideo',  # Select the lowest video quality
-#             # "--concurrent-fragments", "1",  # Reduce concurrent fragment downloads
-#             "--fragment-retries", "10",  # Set retries for failed fragments
-#             "--sleep-interval", "5",  # Wait 5 seconds between retries
-#             # "--merge-output-format", "mp4",  # Ensure merged output format                        
-#             "-o", video_output_template,
-#             url
-#         ])
-#         logger.info("Downloading full video...")
-#     else:
-#         # Download audio-only as mp3
-#         command.extend([
-#             "--extract-audio",
-#             "--audio-format", "mp3",
-#             "-o", audio_path,
-#             url
-#         ])
-#         logger.info("Downloading audio-only...")
-
-#     # Start the subprocess
-#     process = await asyncio.create_subprocess_exec(
-#         *command,
-#         stdout=asyncio.subprocess.PIPE,
-#         stderr=asyncio.subprocess.PIPE
-#     )
-
-#     stdout_lines = []
-#     stderr_lines = []
-
-#     async def read_stream(stream, lines, log_func):
-#         while True:
-#             line = await stream.readline()
-#             if line:
-#                 decoded_line = line.decode().rstrip()
-#                 lines.append(decoded_line)
-#                 log_func(decoded_line)
-#             else:
-#                 break
-
-#     await asyncio.gather(
-#         read_stream(process.stdout, stdout_lines, logger.info),
-#         read_stream(process.stderr, stderr_lines, logger.error)
-#     )
-
-#     await process.wait()
-
-#     if process.returncode != 0:
-#         stderr_output = '\n'.join(stderr_lines)
-#         if any(keyword in stderr_output for keyword in [
-#             "separator is not found",
-#             "chunk exceed the limit",
-#             "Sign in to confirm you're not a bot",
-#             "unable to extract initial player response",
-#             "This video is unavailable",
-#             "ERROR:"
-#         ]):
-#             custom_error_message = (
-#                 "Failed to download audio due to YouTube's anti-bot measures or video restrictions. "
-#                 "Possible reasons include age restrictions, region locks, or the video requiring sign-in. "
-#                 "Please try a different video, or if you're the administrator, consider using cookies with `yt-dlp`."
-#             )
-#             logger.error(f"Error: {custom_error_message}")
-#             raise Exception(custom_error_message)
-#         else:
-#             logger.error(f"yt-dlp failed with error:\n{stderr_output}")
-#             raise Exception(f"Failed to download audio: {stderr_output}")
-
-#     if should_download_video:
-#         video_extensions = ['mp4', 'webm', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'mpg', 'mpeg']
-#         video_file = None
-#         for ext in video_extensions:
-#             potential_video = f"{base_output_path}.{ext}"
-#             if os.path.exists(potential_video):
-#                 video_file = potential_video
-#                 break
-
-#         if not video_file:
-#             logger.error("Failed to locate the downloaded video file.")
-#             raise Exception("Failed to locate the downloaded video file.")
-
-#         logger.info(f"Extracted video file: {video_file}")
-
-#         try:
-#             audio = AudioSegment.from_file(video_file)
-#             audio.export(audio_path, format="mp3")
-#             logger.info(f"Extracted audio to: {audio_path}")
-#         except Exception as e:
-#             logger.error(f"Failed to extract audio from video: {e}")
-#             raise Exception(f"Failed to extract audio from video: {e}")
-
-#         try:
-#             os.remove(video_file)
-#             logger.info(f"Removed temporary video file: {video_file}")
-#         except Exception as e:
-#             logger.warning(f"Failed to remove temporary video file {video_file}: {e}")
-
-#     else:
-#         if not os.path.exists(audio_path):
-#             raise Exception(f"Failed to download audio: {audio_path}")
-#         logger.info(f"Audio downloaded successfully: {audio_path}")
 
 # Read from stream line by line until EOF, call callback on each line.
 async def read_stream(stream, callback):

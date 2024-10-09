@@ -1,4 +1,4 @@
-FROM python:slim-bookworm
+FROM python:3.12-slim
 
 # Install dependencies & clean up after to reduce Docker file size
 RUN apt-get update && apt-get install -y \
@@ -12,6 +12,9 @@ WORKDIR /app
 
 # Copy the requirements file first to leverage Docker cache
 COPY requirements.txt .
+
+# Upgrade pip and setuptools
+RUN pip install --upgrade pip setuptools wheel
 
 # Install Python dependencies
 RUN pip3 install --no-cache-dir -r requirements.txt
