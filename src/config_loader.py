@@ -45,6 +45,20 @@ class ConfigLoader:
             'completion_message': completion_message
         }
 
+    # NEW: Method to get yt-dlp domain settings
+    @classmethod
+    def get_ytdlp_domain_settings(cls):
+        config = cls.get_config()
+        active = config.getboolean('YTDLPSettings', 'download_original_video_for_domains_active', fallback=False)
+        domains = config.get('YTDLPSettings', 'download_original_video_domains', fallback='')
+        # Split by comma and strip whitespace
+        domain_list = [domain.strip().lower() for domain in domains.split(',') if domain.strip()]
+        
+        return {
+            'active': active,
+            'domains': domain_list
+        }
+
 # Usage example:
 # from config_loader import ConfigLoader
 # notification_settings = ConfigLoader.get_notification_settings()

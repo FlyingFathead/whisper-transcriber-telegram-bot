@@ -2,3 +2,4 @@
 # https://github.com/FlyingFathead/catgit
 README.md
 tests/diarize_with_whisper-test.py
+utils/resemblyzer_safety_check.py

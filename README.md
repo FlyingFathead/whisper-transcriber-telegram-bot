@@ -181,7 +181,7 @@ Replace `'YourTelegramBotToken'` with your actual Telegram bot token. This comma
 
 ## Usage
 
-After launching the bot, you can interact with it via Telegram (message `@whatever_your_bot_name_is_Bot`):
+After launching your bot successfully, you can interact with it via Telegram (send a message to `@your_bot_name_Bot`, or whatever your bot name is):
 
 1. Send a video URL (for `yt-dlp` to download), a voice message or an audio file (i.e. `.wav` or `.mp3` format) to the bot.
 2. The bot will acknowledge the request and begin processing, notifying the user of the process.
@@ -195,6 +195,14 @@ After launching the bot, you can interact with it via Telegram (message `@whatev
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1707 - New `config.ini` option: add sites that require full video download
+   - some media sites don't work well with `yt-dlp`'s audio-only download method
+   - there are now two new options in `config.ini` under `[YTDLPSettings]`:
+   - `download_original_video_for_domains_active = true` (default)
+   - `download_original_video_domains = site1.com, site2.com, site3.com`
+   - at the moment it's used for media platforms that have had reported issues during testing
+   - when active, a comma-separated list is used to check up on media sites that require their contents to be downloaded as the original video instead of audio-only
+   - _(the tradeoff is obviously download size and hence speed; the audio-only method is usually the fastest and should be preferred for most popular sites, hence only add problematic sites to the video-only list)_   
 - v0.1706 - Disable asking for token if running inside Docker
    - by default, the app will ask for the token if it's not found, unless Dockerized
    - can be better for headless use case scenarios where you need the error message rather than a prompt for the bot token
