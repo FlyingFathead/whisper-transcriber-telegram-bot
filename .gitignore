@@ -18,6 +18,9 @@ build/
 # audio messages directory
 audio_messages/
 
+# video messages directory
+video_messages/
+
 # yt-dlp cache directory
 .cache/
 
