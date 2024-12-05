@@ -196,6 +196,13 @@ After launching your bot successfully, you can interact with it via Telegram (se
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1708.1 - Small bug fixes in the output
+   - Note that running the program within `firejail` using Nvidia driver v.560.xx or newer requires i.e.:
+   ```
+   firejail --noblacklist=/sys/module --whitelist=/sys/module/nvidia* --read-only=/sys/module/nvidia* python src/main.py
+   ```
+   This is due to recent changes in Nvidia's driver handling on Linux, see i.e. [here](https://github.com/netblue30/firejail/issues/6509) or [here](https://github.com/netblue30/firejail/issues/6372)
+   - Dockerized versions should run without problems
 - v0.1708 - Direct video file uploads are now available
    - (to prevent abuse, they're disabled by default, see `config.ini`)
 - v0.1707 - New `config.ini` option: add sites that require full video download

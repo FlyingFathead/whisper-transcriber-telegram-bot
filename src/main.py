@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1708"
+version_number = "0.1708.1"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -311,10 +311,13 @@ class TranscriberBot:
                                                 ai_transcript_header = f"[ Transcript generated with: https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/ | OpenAI Whisper model: `{model}` | Language: `{language}` ]"
                                                 header_content = f"{video_info_message}\n\n{ai_transcript_header}\n\n"
                                                 content = content[len(header_content):]
-                                            content = transcription_note + content  # Add transcription note
+                                            # content = transcription_note + content  # Add transcription note
 
                                         # Escape content before splitting
                                         content = html.escape(content)
+
+                                        # Then prepend the transcription note (do not escape it)
+                                        content = transcription_note + content  # Add transcription note
 
                                         # Define the maximum message length (Telegram limit is 4096)
                                         max_message_length = 3500
