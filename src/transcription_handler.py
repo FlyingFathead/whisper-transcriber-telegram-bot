@@ -515,7 +515,12 @@ async def process_url_message(message_text, bot, update, model, language):
             except Exception as e:
                 error_message = str(e)
                 logger.error(f"An error occurred while fetching video details: {error_message}")
-                await bot.send_message(chat_id=update.effective_chat.id, text=f"❌ Error: {error_message}")
+                # await bot.send_message(chat_id=update.effective_chat.id, text=f"❌ Error: {error_message}")
+                await bot.send_message(
+                    chat_id=update.effective_chat.id, 
+                    text=f"❌ Error: {error_message}", 
+                    disable_web_page_preview=True
+                )
                 continue  # Skip to the next URL if any
 
             await bot.send_message(chat_id=update.effective_chat.id, text="📥 Fetching the audio track...")
@@ -750,13 +755,15 @@ async def fetch_video_details(url, max_retries=3, base_delay=5, command_timeout=
                         "Sign in to confirm you're not a bot",
                         "unable to extract initial player response",
                         "This video is unavailable",
+                        "Error 403",
                         "ERROR:"
                     ]):
                         custom_error_message = (
                             "❌ Failed to fetch video details due to YouTube's anti-bot measures or video restrictions. "
-                            "Possible reasons include age restrictions, region locks, or the video requiring sign-in. "
-                            "Please try a different video URL, or see type /help for supported file formats for delivery. "
-                            "If you are the administrator of this service, consider using cookies with `yt-dlp`."
+                            "Possible reasons include age restrictions, region locks, or the video requiring sign-in.\n"
+                            "\nPlease try a different video URL, or see type /help for supported file formats for delivery.\n"
+                            "\n⚠️ If you are the administrator of this service, consider using cookies with yt-dlp. "
+                            "More info on yt-dlp's cookies at: https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp"
                         )
                         raise Exception(custom_error_message)
                     else:
