@@ -607,20 +607,51 @@ async def process_url_message(message_text, bot, update, model, language):
 
             # Here is where we add the transcription_note
             transcription_note = "📝🔊 <i>(transcribed audio)</i>\n\n"
-            note_length = len(transcription_note)
-            max_message_length = 4000 - note_length  # Adjust max length to account for transcription note
+            # note_length = len(transcription_note)
+            # max_message_length = 4000 - note_length  # Adjust max length to account for transcription note
 
+            # message sending and chunking logic; revised
             if transcription_settings['send_as_messages'] and 'txt' in transcription_paths:
                 try:
                     logger.info(f"Preparing to send plain text message from raw content")
                     content = transcription_note + raw_content  # Add transcription note to the raw content
-                    for i in range(0, len(content), max_message_length):
-                        await bot.send_message(chat_id=update.effective_chat.id, text=content[i:i+max_message_length], parse_mode='HTML')
-                        logger.info(f"Sent message chunk: {i // max_message_length + 1}")
+                    # Just to be safe, reduce the chunk even more if needed
+                    safe_max = 3500  # even safer limit
+                    for i in range(0, len(content), safe_max):
+                        chunk = content[i:i+safe_max]
+
+                        # Optional: Make sure chunk length is safely under 4096 (should already be)
+                        if len(chunk) > 4096:
+                            chunk = chunk[:4096]
+
+                        # OPTIONAL: Check if we end in the middle of an HTML tag and adjust if needed.
+                        # For example, if chunk ends with '<', we might remove that character or find the previous space:
+                        if '<' in chunk[-5:]:  # crude check for partial tag at end
+                            # Try to backtrack to a space before the '<'
+                            last_space = chunk.rfind(' ')
+                            if last_space != -1:
+                                chunk = chunk[:last_space]
+
+                        # Now send the message
+                        await bot.send_message(chat_id=update.effective_chat.id, text=chunk, parse_mode='HTML')
+                        logger.info(f"Sent message chunk: {(i // safe_max) + 1}")
                 except Exception as e:
                     logger.error(f"Error in sending plain text message: {e}")
             else:
                 logger.info("Condition for sending plain text message not met.")
+            
+            # // old method
+            # if transcription_settings['send_as_messages'] and 'txt' in transcription_paths:
+            #     try:
+            #         logger.info(f"Preparing to send plain text message from raw content")
+            #         content = transcription_note + raw_content  # Add transcription note to the raw content
+            #         for i in range(0, len(content), max_message_length):
+            #             await bot.send_message(chat_id=update.effective_chat.id, text=content[i:i+max_message_length], parse_mode='HTML')
+            #             logger.info(f"Sent message chunk: {i // max_message_length + 1}")
+            #     except Exception as e:
+            #         logger.error(f"Error in sending plain text message: {e}")
+            # else:
+            #     logger.info("Condition for sending plain text message not met.")
 
             # Sending files if configured
             if transcription_settings['send_as_files']:
