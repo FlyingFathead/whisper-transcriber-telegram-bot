@@ -383,7 +383,16 @@ async def transcribe_audio(bot, update, audio_path, output_dir, youtube_url, vid
     log_gpu_utilization()  # Log GPU utilization before starting transcription
 
     logger.info(f"Using device: {device} for transcription")
-    transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir, "--device", device]
+    
+    # transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir, "--device", device]
+
+    transcription_command = [
+        "whisper", audio_path, 
+        "--model", model, 
+        "--output_dir", output_dir, 
+        "--device", device
+    ]
+
     if language and language != "auto":
         logger.info(f"Starting transcription with model '{model}' and language '{language}' for: {audio_path}")
         transcription_command.extend(["--language", language])
@@ -599,7 +608,7 @@ async def process_url_message(message_text, bot, update, model, language):
             # Here is where we add the transcription_note
             transcription_note = "📝🔊 <i>(transcribed audio)</i>\n\n"
             note_length = len(transcription_note)
-            max_message_length = 4096 - note_length  # Adjust max length to account for transcription note
+            max_message_length = 4000 - note_length  # Adjust max length to account for transcription note
 
             if transcription_settings['send_as_messages'] and 'txt' in transcription_paths:
                 try:

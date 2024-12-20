@@ -196,6 +196,8 @@ After launching your bot successfully, you can interact with it via Telegram (se
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1708.2 - Added buffer for chunking
+   - Changed the chunk sizes from `4096` to `4000` to avoid edge case 
 - v0.1708.1 - Small bug fixes in the output
    - Note that running the program within `firejail` using Nvidia driver v.560.xx or newer requires i.e.:
    ```
