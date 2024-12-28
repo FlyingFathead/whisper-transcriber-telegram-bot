@@ -196,6 +196,9 @@ After launching your bot successfully, you can interact with it via Telegram (se
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1709.1 - increased split message maximum character safe zone buffers to prevent chunk exceeding
+   - added a further safeguard to fall back on character-level splitting if no whitespace is found
+   - please refer to issues (and reopen if necessary) if the problem persists
 - v0.1709 - Added `config.ini` option to ping users (i.e. the owner) on startup (when the service is online)
    - startup notifications true/false, user ID's and the environment variable and fallbacks can be defined in `config.ini`
 - v0.1708.4 - Better error catching
@@ -203,7 +206,7 @@ After launching your bot successfully, you can interact with it via Telegram (se
 - v0.1708.3 - Enforced chunk size double-check when sending transcripts as messages
    - This is to ensure we're staying under the message length cap in Telegram
 - v0.1708.2 - Added buffer for chunking
-   - Changed the chunk sizes from `4096` to `4000` to avoid edge case 
+   - Changed the chunk sizes from `4096` to `4000` to avoid edge cases
 - v0.1708.1 - Small bug fixes in the output
    - Note that running the program within `firejail` using Nvidia driver v.560.xx or newer requires i.e.:
    ```

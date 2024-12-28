@@ -1,7 +1,6 @@
 # transcription_handler.py
 # ~~~
 # openai-whisper transcriber-bot for Telegram
-# v0.12
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -172,7 +171,7 @@ def get_transcription_settings():
         }
 
 # split long messages
-def split_message(message, max_length=4096):
+def split_message(message, max_length=3500):
     return [message[i:i+max_length] for i in range(0, len(message), max_length)]
 
 # // audio download (new method)
@@ -620,22 +619,45 @@ async def process_url_message(message_text, bot, update, model, language):
                 try:
                     logger.info(f"Preparing to send plain text message from raw content")
                     content = transcription_note + raw_content  # Add transcription note to the raw content
+                    
                     # Just to be safe, reduce the chunk even more if needed
-                    safe_max = 3500  # even safer limit
+                    safe_max = 3000  # even safer limit
+
                     for i in range(0, len(content), safe_max):
                         chunk = content[i:i+safe_max]
 
                         # Optional: Make sure chunk length is safely under 4096 (should already be)
-                        if len(chunk) > 4096:
-                            chunk = chunk[:4096]
+                        if len(chunk) > 4000:
+                            chunk = chunk[:4000]
 
-                        # OPTIONAL: Check if we end in the middle of an HTML tag and adjust if needed.
-                        # For example, if chunk ends with '<', we might remove that character or find the previous space:
+                        # # OPTIONAL: Check if we end in the middle of an HTML tag and adjust if needed.
+                        # # For example, if chunk ends with '<', we might remove that character or find the previous space:
+                        # if '<' in chunk[-5:]:  # crude check for partial tag at end
+                        #     # Try to backtrack to a space before the '<'
+                        #     last_space = chunk.rfind(' ')
+                        #     if last_space != -1:
+                        #         chunk = chunk[:last_space]
+
+                        # Check if we end on a partial HTML tag
                         if '<' in chunk[-5:]:  # crude check for partial tag at end
-                            # Try to backtrack to a space before the '<'
                             last_space = chunk.rfind(' ')
                             if last_space != -1:
                                 chunk = chunk[:last_space]
+                        
+                        # Attempt to find last whitespace so we don’t split in the middle of a word
+                        # BUT if there's NO whitespace at all, we forcibly break anyway:
+                        last_space = chunk.rfind(' ')
+                        if last_space == -1 and len(chunk) == safe_max:
+                            # This means no space was found in the entire chunk,
+                            # so we forcibly keep the chunk at safe_max (which likely breaks a word).
+                            logger.warning("No whitespace found. Forcibly splitting mid-word at position %d.", i + safe_max)
+                            # chunk remains chunk[:safe_max], i.e. as-is
+                        elif last_space > -1 and last_space > 0:
+                            # We found a space within the chunk
+                            chunk = chunk[:last_space]
+                            # Note: If you do this, you might want to adjust `i` accordingly 
+                            # or treat the leftover text on the next iteration. 
+                            # But for a simple approach, this is enough to keep the code short.
 
                         # Now send the message
                         await bot.send_message(chat_id=update.effective_chat.id, text=chunk, parse_mode='HTML')
@@ -680,7 +702,7 @@ async def process_url_message(message_text, bot, update, model, language):
         await bot.send_message(chat_id=update.effective_chat.id, text="An error occurred during processing.")
 
 # create video info
-def create_video_info_message(details, max_length=4000):
+def create_video_info_message(details):
     header_separator = "=" * 10
     video_info_message = f"""{header_separator}
 Title: {details.get('title', 'No title available')}
