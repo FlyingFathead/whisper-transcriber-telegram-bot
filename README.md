@@ -198,7 +198,7 @@ After launching your bot successfully, you can interact with it via Telegram (se
 ## Changes
 - v0.1709.1 - increased split message maximum character safe zone buffers to prevent chunk exceeding
    - added a further safeguard to fall back on character-level splitting if no whitespace is found
-   - please refer to issues (and reopen if necessary) if the problem persists
+   - please refer to i.e. [Issue #7](https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/issues/7) (and open up a new issue if necessary) if the problem persists
 - v0.1709 - Added `config.ini` option to ping users (i.e. the owner) on startup (when the service is online)
    - startup notifications true/false, user ID's and the environment variable and fallbacks can be defined in `config.ini`
 - v0.1708.4 - Better error catching
