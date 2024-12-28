@@ -196,7 +196,7 @@ After launching your bot successfully, you can interact with it via Telegram (se
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
-. v0.1709 - Added `config.ini` option to ping users (i.e. the owner) on startup (when the service is online)
+- v0.1709 - Added `config.ini` option to ping users (i.e. the owner) on startup (when the service is online)
    - startup notifications true/false, user ID's and the environment variable and fallbacks can be defined in `config.ini`
 - v0.1708.4 - Better error catching
    - Fixed the description and catching of i.e. YouTube's 403 errors
