@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1709.1"
+version_number = "0.1709.2"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -795,16 +795,19 @@ class TranscriberBot:
                     async def ping_owners_on_startup(app: Application):
 
                         # Prepare a UTC time string
-                        start_time_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+                        start_time_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                        start_time_local = datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")
                         
                         for owner_id in owner_ids:
                             try:
                                 await app.bot.send_message(
                                     chat_id=owner_id,
                                     text=(
-                                        "👋🤖 Whisper Transcriber Bot is now online!\n"
-                                        f"\nStart time: {start_time_utc}"
-                                    )
+                                        "<b>👋🤖 Whisper Transcriber Bot is now online!</b>\n"
+                                        f"\nStart time: {start_time_utc} (UTC)"
+                                        f"\nLocal time: {start_time_local}"                                        
+                                    ),
+                                    parse_mode='HTML'                                    
                                 )
 
                             # try:

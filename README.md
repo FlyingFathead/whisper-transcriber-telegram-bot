@@ -196,6 +196,7 @@ After launching your bot successfully, you can interact with it via Telegram (se
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1709.2 - up & running greeting is now more prominent w/ both UTC+local times
 - v0.1709.1 - increased split message maximum character safe zone buffers to prevent chunk exceeding
    - added a further safeguard to fall back on character-level splitting if no whitespace is found
    - please refer to i.e. [Issue #7](https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/issues/7) (and open up a new issue if necessary) if the problem persists
