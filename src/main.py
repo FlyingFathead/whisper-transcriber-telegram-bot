@@ -803,7 +803,7 @@ class TranscriberBot:
                                     chat_id=owner_id,
                                     text=(
                                         "👋🤖 Whisper Transcriber Bot is now online!\n"
-                                        f"Start time: {start_time_utc}"
+                                        f"\nStart time: {start_time_utc}"
                                     )
                                 )
 
