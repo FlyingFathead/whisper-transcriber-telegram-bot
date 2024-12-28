@@ -59,6 +59,48 @@ class ConfigLoader:
             'domains': domain_list
         }
 
+    # get the owner ID's and ping on startup if needed
+    @classmethod
+    def get_owner_ids(cls):
+        """ Return a list of owner IDs as integers. """
+        config = cls.get_config()
+        use_env = config.getboolean('OwnerSettings', 'use_env_for_ownerid', fallback=False)
+        env_var_name = config.get('OwnerSettings', 'ownerid_env_var_name', fallback='WHISPER_TRANSCRIBERBOT_OWNER_USERID')
+        fallback_str = config.get('OwnerSettings', 'ownerid_fallback', fallback='')
+
+        if use_env:
+            # Example: export WHISPER_TRANSCRIBERBOT_OWNER_USERID="12345,67890"
+            env_val = os.getenv(env_var_name, '')
+            if env_val.strip():
+                logger.info(f"Reading owner ID(s) from env var {env_var_name}: {env_val}")
+                try:
+                    owners = [int(x.strip()) for x in env_val.split(',') if x.strip()]
+                    return owners
+                except ValueError:
+                    logger.error(f"Could not parse environment variable {env_var_name} as int list: {env_val}")
+                    return []
+            else:
+                logger.warning(f"Environment variable {env_var_name} is empty or not set; using fallback from config.ini")
+        
+        # Fallback branch: read from config
+        if fallback_str.strip():
+            logger.info(f"Using fallback owner IDs from config.ini: {fallback_str}")
+            try:
+                owners = [int(x.strip()) for x in fallback_str.split(',') if x.strip()]
+                return owners
+            except ValueError:
+                logger.error(f"Could not parse fallback owner IDs in config.ini: {fallback_str}")
+                return []
+        
+        logger.warning("No valid owner IDs found from environment or config.")
+        return []
+
+    @classmethod
+    def should_ping_owners_on_start(cls):
+        """ Return True/False if we should ping owners when the bot starts. """
+        config = cls.get_config()
+        return config.getboolean('OwnerSettings', 'ping_owners_on_start', fallback=False)
+
 # Usage example:
 # from config_loader import ConfigLoader
 # notification_settings = ConfigLoader.get_notification_settings()

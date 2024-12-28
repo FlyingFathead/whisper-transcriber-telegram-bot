@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1708.4"
+version_number = "0.1709"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -786,6 +786,37 @@ class TranscriberBot:
                 self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
                 loop.create_task(self.process_queue())
+
+                # Schedule ping to owners if config says so
+                owner_ids = ConfigLoader.get_owner_ids()
+                ping_owners_on_start = ConfigLoader.should_ping_owners_on_start()
+
+                if owner_ids and ping_owners_on_start:
+                    async def ping_owners_on_startup(app: Application):
+
+                        # Prepare a UTC time string
+                        start_time_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+                        
+                        for owner_id in owner_ids:
+                            try:
+                                await app.bot.send_message(
+                                    chat_id=owner_id,
+                                    text=(
+                                        "👋🤖 Whisper Transcriber Bot is now online!\n"
+                                        f"Start time: {start_time_utc}"
+                                    )
+                                )
+
+                            # try:
+                            #     await app.bot.send_message(chat_id=owner_id, text="👋 Whisper Transcriber Bot is now online!")
+
+                            except Exception as e:
+                                logger.warning(f"Failed to send startup ping to owner {owner_id}: {e}")
+
+                    # post_init callback runs once after the bot is ready
+                    self.application.post_init = ping_owners_on_startup
+
+                # start polling
                 self.application.run_polling()
                 connected = True
 
