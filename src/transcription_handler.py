@@ -614,58 +614,140 @@ async def process_url_message(message_text, bot, update, model, language):
             # note_length = len(transcription_note)
             # max_message_length = 4000 - note_length  # Adjust max length to account for transcription note
 
-            # message sending and chunking logic; revised
+            # message sending and chunking logic; revised for v.0.1710
             if transcription_settings['send_as_messages'] and 'txt' in transcription_paths:
                 try:
-                    logger.info(f"Preparing to send plain text message from raw content")
+                    logger.info("Preparing to send plain text message from raw content")
                     content = transcription_note + raw_content  # Add transcription note to the raw content
                     
                     # Just to be safe, reduce the chunk even more if needed
-                    safe_max = 3000  # even safer limit
+                    safe_max = 3500  # even safer limit
+                    i = 0
 
-                    for i in range(0, len(content), safe_max):
-                        chunk = content[i:i+safe_max]
+                    # Replacing the old `for i in range(0, len(content), safe_max):` approach
+                    # with a `while` loop that ensures leftover text isn’t lost if we trim.
+                    while i < len(content):
+                        # Slice up to safe_max or the end of the string
+                        chunk = content[i:i + safe_max]
 
-                        # Optional: Make sure chunk length is safely under 4096 (should already be)
+                        # Optional: Make sure chunk length is safely under 4096 (Telegram limit is 4096)
                         if len(chunk) > 4000:
                             chunk = chunk[:4000]
 
-                        # # OPTIONAL: Check if we end in the middle of an HTML tag and adjust if needed.
-                        # # For example, if chunk ends with '<', we might remove that character or find the previous space:
-                        # if '<' in chunk[-5:]:  # crude check for partial tag at end
-                        #     # Try to backtrack to a space before the '<'
-                        #     last_space = chunk.rfind(' ')
-                        #     if last_space != -1:
-                        #         chunk = chunk[:last_space]
+                        # If this chunk is smaller than safe_max, we’re near the end
+                        # We'll still do the partial-tag and whitespace checks, but after sending, we break
+                        if len(chunk) < safe_max:
+                            # Check partial HTML near the end (optional). 
+                            if '<' in chunk[-5:]:  # crude check for partial tag at end
+                                last_space = chunk.rfind(' ')
+                                if last_space != -1:
+                                    chunk = chunk[:last_space]
 
-                        # Check if we end on a partial HTML tag
+                            # Check if we’re splitting a word
+                            last_space = chunk.rfind(' ')
+                            if last_space == -1 and len(chunk) == safe_max:
+                                logger.warning("No whitespace found. Forcibly splitting mid-word near end.")
+                            elif last_space > 0:
+                                chunk = chunk[:last_space]
+
+                            # Send the last chunk
+                            await bot.send_message(
+                                chat_id=update.effective_chat.id,
+                                text=chunk,
+                                parse_mode='HTML'
+                            )
+                            logger.info(f"Sent message chunk: {(i // safe_max) + 1}")
+                            break
+
+                        # If chunk is exactly safe_max in length, do partial tag / partial word checks
+
+                        # 1) Attempt to avoid splitting an HTML tag
                         if '<' in chunk[-5:]:  # crude check for partial tag at end
                             last_space = chunk.rfind(' ')
                             if last_space != -1:
                                 chunk = chunk[:last_space]
-                        
-                        # Attempt to find last whitespace so we don’t split in the middle of a word
-                        # BUT if there's NO whitespace at all, we forcibly break anyway:
+
+                        # 2) Attempt to find last whitespace so we don’t split in the middle of a word
                         last_space = chunk.rfind(' ')
                         if last_space == -1 and len(chunk) == safe_max:
-                            # This means no space was found in the entire chunk,
-                            # so we forcibly keep the chunk at safe_max (which likely breaks a word).
-                            logger.warning("No whitespace found. Forcibly splitting mid-word at position %d.", i + safe_max)
-                            # chunk remains chunk[:safe_max], i.e. as-is
-                        elif last_space > -1 and last_space > 0:
-                            # We found a space within the chunk
+                            # This means no space found => forcibly keep chunk as-is
+                            logger.warning(
+                                "No whitespace found. Forcibly splitting mid-word at position %d.",
+                                i + safe_max
+                            )
+                        elif last_space > 0:
                             chunk = chunk[:last_space]
-                            # Note: If you do this, you might want to adjust `i` accordingly 
-                            # or treat the leftover text on the next iteration. 
-                            # But for a simple approach, this is enough to keep the code short.
 
-                        # Now send the message
-                        await bot.send_message(chat_id=update.effective_chat.id, text=chunk, parse_mode='HTML')
+                        # Now send the chunk
+                        await bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text=chunk,
+                            parse_mode='HTML'
+                        )
                         logger.info(f"Sent message chunk: {(i // safe_max) + 1}")
+
+                        # Advance i by the length of the chunk we actually sent
+                        # That leftover beyond `chunk` is still unsent, so the next loop iteration handles it
+                        i += len(chunk)
+
                 except Exception as e:
                     logger.error(f"Error in sending plain text message: {e}")
             else:
                 logger.info("Condition for sending plain text message not met.")
+
+            # # // old method; used up until v0.1709.2
+            # # message sending and chunking logic; revised
+            # if transcription_settings['send_as_messages'] and 'txt' in transcription_paths:
+            #     try:
+            #         logger.info(f"Preparing to send plain text message from raw content")
+            #         content = transcription_note + raw_content  # Add transcription note to the raw content
+                    
+            #         # Just to be safe, reduce the chunk even more if needed
+            #         safe_max = 3500  # even safer limit
+                    
+            #         for i in range(0, len(content), safe_max):
+            #             chunk = content[i:i+safe_max]
+
+            #             # Optional: Make sure chunk length is safely under 4096 (should already be)
+            #             if len(chunk) > 4000:
+            #                 chunk = chunk[:4000]
+
+            #             # # OPTIONAL: Check if we end in the middle of an HTML tag and adjust if needed.
+            #             # # For example, if chunk ends with '<', we might remove that character or find the previous space:
+            #             # if '<' in chunk[-5:]:  # crude check for partial tag at end
+            #             #     # Try to backtrack to a space before the '<'
+            #             #     last_space = chunk.rfind(' ')
+            #             #     if last_space != -1:
+            #             #         chunk = chunk[:last_space]
+
+            #             # Check if we end on a partial HTML tag
+            #             if '<' in chunk[-5:]:  # crude check for partial tag at end
+            #                 last_space = chunk.rfind(' ')
+            #                 if last_space != -1:
+            #                     chunk = chunk[:last_space]
+                        
+            #             # Attempt to find last whitespace so we don’t split in the middle of a word
+            #             # BUT if there's NO whitespace at all, we forcibly break anyway:
+            #             last_space = chunk.rfind(' ')
+            #             if last_space == -1 and len(chunk) == safe_max:
+            #                 # This means no space was found in the entire chunk,
+            #                 # so we forcibly keep the chunk at safe_max (which likely breaks a word).
+            #                 logger.warning("No whitespace found. Forcibly splitting mid-word at position %d.", i + safe_max)
+            #                 # chunk remains chunk[:safe_max], i.e. as-is
+            #             elif last_space > -1 and last_space > 0:
+            #                 # We found a space within the chunk
+            #                 chunk = chunk[:last_space]
+            #                 # Note: If you do this, you might want to adjust `i` accordingly 
+            #                 # or treat the leftover text on the next iteration. 
+            #                 # But for a simple approach, this is enough to keep the code short.
+
+            #             # Now send the message
+            #             await bot.send_message(chat_id=update.effective_chat.id, text=chunk, parse_mode='HTML')
+            #             logger.info(f"Sent message chunk: {(i // safe_max) + 1}")
+            #     except Exception as e:
+            #         logger.error(f"Error in sending plain text message: {e}")
+            # else:
+            #     logger.info("Condition for sending plain text message not met.")
             
             # // old method
             # if transcription_settings['send_as_messages'] and 'txt' in transcription_paths:
