@@ -199,6 +199,8 @@ After launching your bot successfully, you can interact with it via Telegram (se
 - v0.1710 - rewrite for chunking logic when sending as messages & re-encoding tool
    - better step-by-step logging, better error catching, better fitting into TG message limits with fallbacks
    - again; please refer to i.e. [Issue #7](https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/issues/7) (and open up a new issue if necessary) if the problem persists
+   
+   **(other)**
    - included a helper script in `src/utils/reencode_to_target_size.py` for those who can't fit their media sources within Telegram's Bot API's 20 MB limit. 
    - Please use it to recode your stuff before sending it over to your transcriber bot instance if need be.   
    - Run with i.e.:
