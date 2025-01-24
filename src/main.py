@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1710"
+version_number = "0.1711"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -30,7 +30,7 @@ from telegram.ext.filters import MessageFilter
 # Adjust import paths based on new structure
 from transcription_handler import process_url_message, set_user_model, get_whisper_model, transcribe_audio, get_best_gpu, get_audio_duration, estimate_transcription_time, format_duration, get_whisper_language, set_user_language
 from utils.bot_token import get_bot_token
-from utils.utils import print_startup_message, safe_split_message
+from utils.utils import print_startup_message, safe_split_message, hz_line
 from config_loader import ConfigLoader  # Import ConfigLoader
 
 # Configure basic logging
@@ -52,6 +52,35 @@ os.makedirs(audio_messages_dir, exist_ok=True)
 
 # Initialize the lock outside of your function to ensure it's shared across all invocations.
 queue_lock = asyncio.Lock()
+
+# log cookies
+def log_cookies_config():
+    """Log the status of the cookie-related settings at startup."""
+    config = ConfigLoader.get_config()
+
+    use_cookies_file = config.getboolean('YTDLPSettings', 'use_cookies_file', fallback=False)
+    cookies_file = config.get('YTDLPSettings', 'cookies_file', fallback='config/cookies.txt')
+
+    use_browser_cookies = config.getboolean('YTDLPSettings', 'use_browser_cookies', fallback=False)
+    browser_type = config.get('YTDLPSettings', 'browser_type', fallback='firefox')
+    raw_browser_cookies_profile = config.get('YTDLPSettings', 'browser_cookies_profile', fallback='')
+
+    # Expand environment variable if needed
+    expanded_profile = raw_browser_cookies_profile
+    if use_browser_cookies and raw_browser_cookies_profile.startswith('$'):
+        env_var_name = raw_browser_cookies_profile[1:]
+        env_val = os.getenv(env_var_name, '')
+        if env_val:
+            expanded_profile = env_val
+
+    # hz_line()
+    logger.info("--- yt-dlp cookie settings at startup ---")
+    logger.info(f"use_cookies_file       = {use_cookies_file}")
+    logger.info(f"cookies_file          = {cookies_file}")
+    logger.info(f"use_browser_cookies   = {use_browser_cookies}")
+    logger.info(f"browser_type          = {browser_type}")
+    logger.info(f"browser_cookies_profile = {raw_browser_cookies_profile}  [expanded -> {expanded_profile}]")
+    hz_line()
 
 class AllowedFileFilter(filters.MessageFilter):
     def __init__(self, allowed_formats):
@@ -834,6 +863,9 @@ class TranscriberBot:
 
 if __name__ == '__main__':
     print_startup_message(version_number)  # Print startup message
+
+    # Log ytdlp cookie info right away
+    log_cookies_config()
 
     # Read the update settings from config
     config = ConfigLoader.get_config()

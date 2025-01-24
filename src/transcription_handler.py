@@ -178,10 +178,65 @@ def split_message(message, max_length=3500):
 async def download_audio(url, audio_path):
     config = ConfigLoader.get_config()
     ytdlp_settings = ConfigLoader.get_ytdlp_domain_settings()
-    use_cookies = config.getboolean('YTDLPSettings', 'use_cookies', fallback=False)
+
+    # --- Added verbose logging for cookie usage ---
+    use_cookies_file = config.getboolean('YTDLPSettings', 'use_cookies_file', fallback=False)
     cookies_file = config.get('YTDLPSettings', 'cookies_file', fallback='config/cookies.txt')
+    if use_cookies_file:
+        logger.info("Cookie usage is enabled (use_cookies_file=True).")
+        logger.info(f"Expected cookies file path: {cookies_file}")
+        if os.path.exists(cookies_file):
+            logger.info("Cookie file found and will be used for yt-dlp.")
+        else:
+            logger.warning(
+                "Cookie file usage is enabled, but the specified cookies file "
+                f"does not exist at: {cookies_file}. Please check config.ini."
+            )
+    else:
+        logger.info("Cookie file usage is disabled from config (use_cookies_file=False).")
+
+    # read config options
+    use_cookies_file = config.getboolean('YTDLPSettings', 'use_cookies_file', fallback=False)
+    cookies_file = config.get('YTDLPSettings', 'cookies_file', fallback='config/cookies.txt')
+
+    use_browser_cookies = config.getboolean('YTDLPSettings', 'use_browser_cookies', fallback=False)
+    browser_type = config.get('YTDLPSettings', 'browser_type', fallback='firefox')
+    browser_cookies_profile = config.get('YTDLPSettings', 'browser_cookies_profile', fallback='')
+
+    no_cache_dir = config.getboolean('YTDLPSettings', 'no_cache_dir', fallback=False)
+    custom_cache_dir = config.get('YTDLPSettings', 'custom_cache_dir', fallback='')
     use_worst_video_quality = config.getboolean('YTDLPSettings', 'use_worst_video_quality', fallback=True)
-    
+
+    # Log what was found
+    logger.info(f"use_cookies_file={use_cookies_file}, cookies_file={cookies_file}")
+    logger.info(f"use_browser_cookies={use_browser_cookies}, browser_type={browser_type}, browser_cookies_profile={browser_cookies_profile}")
+    logger.info(f"no_cache_dir={no_cache_dir}, custom_cache_dir={custom_cache_dir}, use_worst_video_quality={use_worst_video_quality}")
+
+    # -- Mutually exclusive check (optional) --
+    if use_cookies_file and use_browser_cookies:
+        # Decide which to prefer, or raise an error
+        logger.warning("Both 'use_cookies_file' and 'use_browser_cookies' are true! Defaulting to 'use_browser_cookies' and ignoring the cookies file.")
+        # Or: raise Exception("Cannot use both cookie-file and browser-cookies at once.")
+
+    # Expand environment variable if browser_cookies_profile starts with '$'
+    actual_browser_profile = browser_cookies_profile
+    if use_browser_cookies and browser_cookies_profile.startswith('$'):
+        env_var_name = browser_cookies_profile[1:]
+        env_val = os.getenv(env_var_name, '')
+        if env_val:
+            logger.info(f"Resolved browser profile from env var {env_var_name}: {env_val}")
+            actual_browser_profile = env_val
+        else:
+            logger.warning(f"Environment variable {env_var_name} not set or empty; browser cookies may fail.")
+            # Optionally raise or fallback
+
+    # Check for existence of cookies_file if we’re using a file
+    if use_cookies_file:
+        if os.path.exists(cookies_file):
+            logger.info(f"Cookies file found: {cookies_file}")
+        else:
+            logger.warning(f"Cookies file not found: {cookies_file}")
+
     parsed_url = urlparse(url)
     domain = parsed_url.netloc.lower()
     if domain.startswith('www.'):
@@ -198,8 +253,26 @@ async def download_audio(url, audio_path):
             "--dump-json",
             url
         ]
-        if use_cookies and os.path.exists(cookies_file):
-            command.extend(["--cookies", cookies_file])
+
+        # Apply cache settings based on config
+        if no_cache_dir:
+            logger.info("Disabling yt-dlp cache via config.ini (no_cache_dir=true).")
+            command.insert(1, "--no-cache-dir")  # Insert after 'yt-dlp'
+        elif custom_cache_dir:
+            logger.info(f"Using custom yt-dlp cache directory: {custom_cache_dir}")
+            command.insert(1, f"--cache-dir={custom_cache_dir}")
+
+        # if use_cookies_file and os.path.exists(cookies_file):
+        #     command.extend(["--cookies", cookies_file])
+
+        # Add cookies (only if we do NOT also prefer the browser cookie approach)
+        if use_browser_cookies and not use_cookies_file:
+            # Add --cookies-from-browser
+            command.extend(["--cookies-from-browser", f"{browser_type}:{actual_browser_profile}"])
+        elif use_cookies_file:
+            # Add --cookies <file>
+            if os.path.exists(cookies_file):
+                command.extend(["--cookies", cookies_file])
 
         process = await asyncio.create_subprocess_exec(
             *command,
@@ -257,6 +330,7 @@ async def download_audio(url, audio_path):
         if not selected_format_id:
             raise Exception("Could not determine selected format ID.")
 
+        logger.info(f"yt-dlp command: {command}")
         logger.info(f"Selected format ID: {selected_format_id}")
 
         # Step 3: Download video using the selected format
@@ -270,9 +344,26 @@ async def download_audio(url, audio_path):
             "--output", video_output_template,
             url
         ]
-        if use_cookies and os.path.exists(cookies_file):
-            command.extend(["--cookies", cookies_file])
 
+        # if use_cookies_file and os.path.exists(cookies_file):
+        #     command.extend(["--cookies", cookies_file])
+
+        # apply the cache logic
+        if no_cache_dir:
+            logger.info("Disabling yt-dlp cache via config.ini (no_cache_dir=true).")
+            command.insert(1, "--no-cache-dir")
+        elif custom_cache_dir:
+            logger.info(f"Using custom yt-dlp cache directory: {custom_cache_dir}")
+            command.insert(1, f"--cache-dir={custom_cache_dir}")
+
+        # cookies again
+        if use_browser_cookies and not use_cookies_file:
+            command.extend(["--cookies-from-browser", f"{browser_type}:{actual_browser_profile}"])
+        elif use_cookies_file:
+            if os.path.exists(cookies_file):
+                command.extend(["--cookies", cookies_file])
+
+        logger.info(f"Final yt-dlp command: {command}")
         logger.info("Downloading the selected quality video with audio...")
     else:
         # Download audio-only as mp3
@@ -283,8 +374,25 @@ async def download_audio(url, audio_path):
             "--output", audio_path,
             url
         ]
-        if use_cookies and os.path.exists(cookies_file):
+
+        # if use_cookies_file and os.path.exists(cookies_file):
+        #     command.extend(["--cookies", cookies_file])
+
+        # apply the cache logic
+        if no_cache_dir:
+            logger.info("Disabling yt-dlp cache via config.ini (no_cache_dir=true).")
+            command.insert(1, "--no-cache-dir")
+        elif custom_cache_dir:
+            logger.info(f"Using custom yt-dlp cache directory: {custom_cache_dir}")
+            command.insert(1, f"--cache-dir={custom_cache_dir}")
+
+        # cookies
+        if use_browser_cookies and not use_cookies_file:
+            command.extend(["--cookies-from-browser", f"{browser_type}:{actual_browser_profile}"])
+        elif use_cookies_file and os.path.exists(cookies_file):
             command.extend(["--cookies", cookies_file])
+
+        logger.info(f"Final yt-dlp command: {command}")
         logger.info("Downloading audio-only...")
 
     # Start the subprocess
@@ -821,9 +929,49 @@ def format_duration(duration):
 
 # Fetch details for videos
 async def fetch_video_details(url, max_retries=3, base_delay=5, command_timeout=30):
-    command = ["yt-dlp", "--user-agent",
-               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-               "--dump-json", url]
+    # command = ["yt-dlp", "--user-agent",
+    #            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+    #            "--dump-json", url]
+
+    config = ConfigLoader.get_config()
+
+    # read your YTDLPSettings
+    use_cookies_file = config.getboolean('YTDLPSettings', 'use_cookies_file', fallback=False)
+    cookies_file = config.get('YTDLPSettings', 'cookies_file', fallback='config/cookies.txt')
+    use_browser_cookies = config.getboolean('YTDLPSettings', 'use_browser_cookies', fallback=False)
+    browser_type = config.get('YTDLPSettings', 'browser_type', fallback='firefox')
+    browser_cookies_profile = config.get('YTDLPSettings', 'browser_cookies_profile', fallback='')
+
+    # expand env var if needed
+    actual_browser_profile = browser_cookies_profile
+    if use_browser_cookies and browser_cookies_profile.startswith('$'):
+        env_var_name = browser_cookies_profile[1:]
+        env_val = os.getenv(env_var_name, '')
+        if env_val:
+            actual_browser_profile = env_val
+
+    command = [
+        "yt-dlp",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...",
+        "--dump-json",
+        url
+    ]
+
+    # if you prefer browser cookies over file
+    if use_browser_cookies and not use_cookies_file:
+        command.extend(["--cookies-from-browser", f"{browser_type}:{actual_browser_profile}"])
+    elif use_cookies_file and os.path.exists(cookies_file):
+        command.extend(["--cookies", cookies_file])
+
+    # optional: handle no_cache_dir / custom_cache_dir too if you want
+    no_cache_dir = config.getboolean('YTDLPSettings', 'no_cache_dir', fallback=False)
+    custom_cache_dir = config.get('YTDLPSettings', 'custom_cache_dir', fallback='')
+    if no_cache_dir:
+        command.insert(1, "--no-cache-dir")
+    elif custom_cache_dir:
+        command.insert(1, f"--cache-dir={custom_cache_dir}")
+
+    logger.info(f"fetch_video_details command: {command}")
 
     last_stderr_output = ""
 
