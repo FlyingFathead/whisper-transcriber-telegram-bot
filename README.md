@@ -198,7 +198,7 @@ After launching your bot successfully, you can interact with it via Telegram (se
 ## Changes
 - v0.1711 - **🍪 Cookie handling is here!**
    - see `config.ini` for `yt-dlp` options to set up your cookies
-   - this will make it easier to enable seamless operation with no interruptions with some services
+   - this will make it easier to enable seamless operation with no interruptions when using some video platforms & services
    - use your own `cookies.txt` file or directly link your favorite browser profile for better, uninterrupted access to any online media sources that need session cookies
 - v0.1710 - rewrite for chunking logic when sending as messages & re-encoding tool
    - better step-by-step logging, better error catching, better fitting into TG message limits with fallbacks
