@@ -7,6 +7,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# newline parser when needed
+def _parse_newlines(s: str) -> str:
+    """
+    Replace literal backslash-n sequences (\\n) with actual newlines.
+    """
+    return s.replace("\\n", "\n")
+
 class ConfigLoader:
     _instance = None
     _config = None
@@ -38,7 +45,13 @@ class ConfigLoader:
     def get_notification_settings(cls):
         config = cls.get_config()  # Get the config object
         send_completion_message = config.getboolean('NotificationSettings', 'sendcompletionmessage', fallback=True)
-        completion_message = config.get('NotificationSettings', 'completionmessage', fallback="Transcription complete. Have a nice day!")
+        # completion_message = config.get('NotificationSettings', 'completionmessage', fallback="Transcription complete. Have a nice day!")
+
+        # Read the raw string from config
+        completion_message_raw = config.get('NotificationSettings', 'completionmessage', fallback="Transcription complete.")
+
+        # Convert \n → actual newlines
+        completion_message = _parse_newlines(completion_message_raw)
         
         # === New lines for your queue, GPU, and audio info messages ===
         queue_message_next = config.get(
@@ -68,6 +81,10 @@ class ConfigLoader:
         send_video_info = config.getboolean('NotificationSettings', 'send_video_info', fallback=True)
         send_detailed_info = config.getboolean('NotificationSettings', 'send_detailed_info', fallback=True)
 
+        # voice msg and audio file handling
+        voice_message_received = config.get('NotificationSettings', 'voice_message_received', fallback="")
+        audio_file_received    = config.get('NotificationSettings', 'audio_file_received',    fallback="")
+
         return {
             'queue_message_next': queue_message_next,
             'queue_message_queued': queue_message_queued,
@@ -75,7 +92,9 @@ class ConfigLoader:
             'gpu_message_template': gpu_message_template,
             'gpu_message_no_gpu': gpu_message_no_gpu,
             'send_video_info': send_video_info,
-            'send_detailed_info': send_detailed_info,            
+            'send_detailed_info': send_detailed_info,
+            'voice_message_received': voice_message_received,
+            'audio_file_received': audio_file_received,            
             'send_completion_message': send_completion_message,
             'completion_message': completion_message
         }

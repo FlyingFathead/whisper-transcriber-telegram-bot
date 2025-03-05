@@ -455,7 +455,7 @@ class TranscriberBot:
                             if success and notification_settings['send_completion_message']:
                                 try:
                                     completion_message = notification_settings['completion_message']
-                                    await bot.send_message(chat_id=update.effective_chat.id, text=completion_message)
+                                    await bot.send_message(chat_id=update.effective_chat.id, text=completion_message, parse_mode='HTML')
                                     logger.info(f"Sent completion message to user ID {user_id}: {completion_message}")
                                 except Exception as e:
                                     logger.error(f"Error sending completion message: {e}")
@@ -640,7 +640,12 @@ class TranscriberBot:
         ogg_file_path = os.path.join(audio_messages_dir, f'{file.file_id}.ogg')
         wav_file_path = os.path.join(audio_messages_dir, f'{file.file_id}.wav')
         await file.download_to_drive(ogg_file_path)
-        
+
+        # NEW: read config-based "voice_message_received"
+        voice_msg = self.notification_settings['voice_message_received']
+        if voice_msg.strip():
+            await update.message.reply_text(voice_msg)
+
         # Convert Ogg Opus to WAV using ffmpeg
         try:
             subprocess.run(['ffmpeg', '-i', ogg_file_path, wav_file_path], check=True)
@@ -731,6 +736,11 @@ class TranscriberBot:
             file_path = os.path.join(audio_messages_dir, f'{file_info.file_unique_id}.{file_extension}')
             await file.download_to_drive(file_path)
             logger.info(f"File downloaded to {file_path}")
+
+            # After file is downloaded:
+            audio_file_msg = self.notification_settings['audio_file_received']
+            if audio_file_msg.strip():
+                await update.message.reply_text(audio_file_msg)
 
             # Queue the file for transcription
             await self.task_queue.put((file_path, context.bot, update))
