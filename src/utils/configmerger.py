@@ -22,57 +22,114 @@ Examples:
      ./configmerger.py some_main.ini my_custom.ini --yes
 
 Options:
-  -y, --yes      Merge without prompting (skip confirmation).
-  -h, --help     Print this help and exit.
-
+  -y, --yes         Merge without prompting (skip confirmation).
+  -h, --help        Print this help and exit.
+  --no-backup       Do NOT create a backup of the main config before writing.
+                    (By default, a backup is created.)
+  
 If no changes are found, it does nothing. If new sections or new keys are found,
-they’re added.  If old keys differ in value, they’re updated, and we print a
+they’re added. If old keys differ in value, they’re updated, and we print a
 summary so you can see exactly what changed.
 """
 
 import sys
 import os
+import shutil
 import configparser
+from datetime import datetime
+
+# ----------------------------------------------------------------
+# ALL VARIABLES DECLARED HERE
+# ----------------------------------------------------------------
 
 DEFAULT_MAIN_CONFIG = "config/config.ini"
+DEFAULT_BACKUP_LOCATION = "config/"
+skip_prompt = False
+use_backup = True
+main_cfg = None
+custom_cfg = None
+
+# ----------------------------------------------------------------
+# END OF GLOBAL “DECLARATIONS”
+# ----------------------------------------------------------------
 
 def usage():
     print(__doc__.strip())
 
-def merge_inis(main_path, custom_path, skip_prompt=False):
-    # Load both files into configparser objects
+def make_backup_if_needed(main_path, backup_dir):
+    """
+    Creates a backup of 'main_path' in backup_dir, if main_path exists.
+    
+    We name it something like:
+        backup_dir / <basename_of_main_cfg>.bak
+        or if that exists, .bak1, .bak2, ...
+    
+    Returns the backup file path, or None if no backup was made.
+    """
+    if not os.path.isfile(main_path):
+        # main_path doesn't exist -> no backup
+        return None
+
+    # Make sure backup_dir exists or create it
+    if not os.path.exists(backup_dir):
+        print(f"[INFO] Backup directory '{backup_dir}' does not exist; attempting to create.")
+        try:
+            os.makedirs(backup_dir, exist_ok=True)
+        except Exception as e:
+            print(f"[ERROR] Could not create backup directory '{backup_dir}': {e}")
+            sys.exit(1)
+
+    # We'll store backups with name like "config.ini.bak", "config.ini.bak1", ...
+    base_name = os.path.basename(main_path)  # e.g. "config.ini"
+    name_no_ext, ext = os.path.splitext(base_name)    # ("config", ".ini")
+    # Start with "config.ini.bak" inside backup_dir
+    backup_candidate = os.path.join(backup_dir, f"{base_name}.bak")
+
+    i = 1
+    while os.path.exists(backup_candidate):
+        # If e.g. "config.ini.bak" exists, try "config.ini.bak1", etc.
+        backup_candidate = os.path.join(backup_dir, f"{base_name}.bak{i}")
+        i += 1
+
+    # Copy main_path -> backup_candidate
+    shutil.copy2(main_path, backup_candidate)
+    return backup_candidate
+
+def merge_inis(main_path, custom_path, skip_prompt=False, use_backup=True):
+    """
+    Merge the 'custom_path' config into 'main_path' config, preserving sections.
+
+    - If 'use_backup' is True, creates a backup of main_path in DEFAULT_BACKUP_LOCATION before writing changes.
+    - If 'skip_prompt' is False, shows a summary and asks user to confirm merging.
+    """
     main_parser = configparser.ConfigParser()
     custom_parser = configparser.ConfigParser()
 
-    # configparser normally lowercases section names by default. 
-    # If you need case sensitivity, set: main_parser.optionxform=str
+    # Load the INI files
     main_parser.read(main_path, encoding='utf-8')
     custom_parser.read(custom_path, encoding='utf-8')
 
-    # We'll track changes in dict form:
-    # updated_keys = [(section, key, old_value, new_value)]
-    # new_keys     = [(section, key, new_value)]
-    updated_keys = []
-    new_keys = []
-    new_sections = []
+    # Track changes for user summary
+    updated_keys = []   # [(section, key, old_val, new_val)]
+    new_keys = []       # [(section, key, new_val)]
+    new_sections = []   # [section_name]
 
-    # 1) Merge: For each section in custom, for each key in that section:
+    # For each section/key in the custom file:
     for section in custom_parser.sections():
-        # If main lacks that section, we add it
         if not main_parser.has_section(section):
+            # Entire new section
             new_sections.append(section)
             main_parser.add_section(section)
 
-        # now read key-values
-        for key, custom_value in custom_parser[section].items():
+        for key, custom_val in custom_parser[section].items():
             if main_parser.has_option(section, key):
-                old_value = main_parser[section][key]
-                if old_value != custom_value:
-                    updated_keys.append((section, key, old_value, custom_value))
+                old_val = main_parser[section][key]
+                if old_val != custom_val:
+                    updated_keys.append((section, key, old_val, custom_val))
             else:
-                new_keys.append((section, key, custom_value))
+                new_keys.append((section, key, custom_val))
 
-    # 2) Print summary
+    # Summarize
     print(f"\n--- Merging '{custom_path}' into '{main_path}' ---")
 
     if new_sections:
@@ -80,55 +137,61 @@ def merge_inis(main_path, custom_path, skip_prompt=False):
 
     if updated_keys:
         print("\nKeys that will be UPDATED (old -> new):")
-        for (s, k, oldv, newv) in updated_keys:
-            print(f"  [{s}] {k}: '{oldv}' -> '{newv}'")
+        for (sec, k, oldv, newv) in updated_keys:
+            print(f"  [{sec}] {k}: '{oldv}' -> '{newv}'")
     else:
         print("\nNo existing keys will be updated.")
 
     if new_keys:
         print("\nKeys that will be ADDED:")
-        for (s, k, newv) in new_keys:
-            print(f"  [{s}] {k} = {newv}")
+        for (sec, k, newv) in new_keys:
+            print(f"  [{sec}] {k} = {newv}")
     else:
         print("No new keys will be added.")
 
-    # If absolutely nothing changes:
-    if not new_sections and not updated_keys and not new_keys:
+    no_changes = (not new_sections) and (not updated_keys) and (not new_keys)
+    if no_changes:
         print("\nNo changes found. Exiting without modifying.")
         return
 
-    # 3) Prompt user unless skip_prompt
+    # Confirm unless skip_prompt
     if not skip_prompt:
         choice = input("\nProceed with merging these changes? (y/N) ").strip().lower()
         if choice != 'y':
             print("Aborting. No changes written.")
             return
 
-    # 4) Actually perform changes in memory
-    # - For each updated key, write new_value
-    # - For each new key, also write
-    # - For each new section, that’s already added (above), so just do the keys.
-    for (s, k, oldv, newv) in updated_keys:
-        main_parser[s][k] = newv
+    # If using backups, attempt to back up the main file in DEFAULT_BACKUP_LOCATION
+    backup_file = None
+    if use_backup:
+        backup_file = make_backup_if_needed(main_path, DEFAULT_BACKUP_LOCATION)
+        if backup_file:
+            print(f"[Backup] Created backup: {backup_file}")
+        else:
+            # If main_path didn't exist or we couldn't back it up, we just proceed anyway
+            pass
 
-    for (s, k, newv) in new_keys:
-        main_parser[s][k] = newv
+    # Perform the merges in memory
+    for (sec, k, oldv, newv) in updated_keys:
+        main_parser[sec][k] = newv
+    for (sec, k, newv) in new_keys:
+        main_parser[sec][k] = newv
 
-    # 5) Write out final result
+    # Write out
     with open(main_path, 'w', encoding='utf-8') as f:
         main_parser.write(f)
 
     print(f"\nDone. Changes have been written to: {main_path}")
+    if backup_file:
+        print(f"If needed, you can restore the old version from backup: {backup_file}")
 
 def main():
+    global skip_prompt, use_backup, main_cfg, custom_cfg
+
     args = sys.argv[1:]
     if not args:
         usage()
         sys.exit(1)
-
-    skip_prompt = False
-    main_cfg = None
-    custom_cfg = None
 
     i = 0
     while i < len(args):
@@ -139,7 +202,11 @@ def main():
         elif arg in ("-y", "--yes"):
             skip_prompt = True
             i += 1
+        elif arg == "--no-backup":
+            use_backup = False
+            i += 1
         else:
+            # This is presumably a config file
             if main_cfg is None:
                 main_cfg = arg
             elif custom_cfg is None:
@@ -149,27 +216,32 @@ def main():
                 sys.exit(1)
             i += 1
 
-    # If only 1 file given => treat it as custom,
-    # and use the default main config
+    # If only one file was given => treat it as "custom" and use the default main config
     if main_cfg and not custom_cfg:
         custom_cfg = main_cfg
         main_cfg = DEFAULT_MAIN_CONFIG
 
+    # Check that we indeed have two .ini paths
     if not main_cfg or not custom_cfg:
+        print("\n[ERROR] Not enough .ini file arguments provided.")
         usage()
-        print("\n[ERROR] Not enough config-file arguments provided.")
         sys.exit(1)
 
-    # Check existence of main_cfg
+    # Validate that both exist
     if not os.path.isfile(main_cfg):
         print(f"[ERROR] Main config file '{main_cfg}' not found.")
         sys.exit(1)
-    # Check existence of custom_cfg
     if not os.path.isfile(custom_cfg):
         print(f"[ERROR] Custom config file '{custom_cfg}' not found.")
         sys.exit(1)
 
-    merge_inis(main_cfg, custom_cfg, skip_prompt=skip_prompt)
+    # Now call the actual merger
+    merge_inis(
+        main_path=main_cfg,
+        custom_path=custom_cfg,
+        skip_prompt=skip_prompt,
+        use_backup=use_backup
+    )
 
 if __name__ == "__main__":
     main()
