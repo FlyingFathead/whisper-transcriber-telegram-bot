@@ -578,7 +578,12 @@ async def process_url_message(message_text, bot, update, model, language):
     try:
         # Get transcription settings
         transcription_settings = get_transcription_settings()
-        
+        notification_settings = ConfigLoader.get_notification_settings()
+        gpu_template = notification_settings['gpu_message_template']
+        gpu_no_gpu   = notification_settings['gpu_message_no_gpu']
+        should_send_detailed_info = notification_settings['send_detailed_info']
+        send_video_info = notification_settings['send_video_info'] 
+
         logger.info(f"Transcription settings in process_url_message: {transcription_settings}")
 
         user_id = update.effective_user.id
@@ -617,8 +622,16 @@ async def process_url_message(message_text, bot, update, model, language):
                 details = await fetch_video_details(normalized_url)
                 details['video_url'] = normalized_url
                 video_info_message = create_video_info_message(details)
-                for part in split_message(video_info_message):
-                    await bot.send_message(chat_id=update.effective_chat.id, text=f"<code>{part}</code>", parse_mode='HTML')
+
+                # Only send if config says so
+                if send_video_info:
+                    for part in split_message(video_info_message):
+                        await bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text=f"<code>{part}</code>",
+                            parse_mode='HTML'
+                        )
+
             except Exception as e:
                 error_message = str(e)
                 logger.error(f"An error occurred while fetching video details: {error_message}")
@@ -674,21 +687,31 @@ async def process_url_message(message_text, bot, update, model, language):
             )
 
             best_gpu = get_best_gpu()
+            gpu_message = ""
             if best_gpu:
-                device = f'cuda:{best_gpu.id}'
-                gpu_message = (
-                    f"Using GPU {best_gpu.id}: {best_gpu.name}\n"
-                    f"Free Memory: {best_gpu.memoryFree} MB\n"
-                    f"Load: {best_gpu.load * 100:.1f}%"
-                )
+                device = f"cuda:{best_gpu.id}"
+                # If the user left gpu_message_template blank in config.ini, no message is sent
+                if gpu_template.strip():
+                    gpu_message = gpu_template.format(
+                        gpu_id=best_gpu.id,
+                        gpu_name=best_gpu.name,
+                        gpu_free=best_gpu.memoryFree,
+                        gpu_load=f"{best_gpu.load * 100:.1f}"
+                    )
             else:
-                device = 'cpu'
-                gpu_message = "⚠️ WARNING: No CUDA GPU available, using CPU for transcription. This will be much slower than estimated."
+                device = "cpu"
+                # Same idea, only send the message if user actually set something in config
+                if gpu_no_gpu.strip():
+                    gpu_message = gpu_no_gpu
 
-            logger.info(gpu_message)
-            await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
+            # If we ended up with a non-empty gpu_message, log + send
+            if gpu_message.strip():
+                logger.info(gpu_message)
+                await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
 
             language_setting = language if language else "autodetection"
+
+            # If user wants the detailed transcription message, send it
             detailed_message = (
                 f"Whisper model in use:\n{model}\n\n"
                 f"Model language set to:\n{language_setting}\n\n"
@@ -698,10 +721,12 @@ async def process_url_message(message_text, bot, update, model, language):
                 "🎙️✍️ Transcribing audio..."
             )
 
+            # log the detailed info whether or not we're sending it to the user
             logger.info(f"{log_message}")
             logger.info(f"{detailed_message}")
 
-            await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
+            if should_send_detailed_info:
+                await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
 
             transcription_paths, raw_content = await transcribe_audio(
                 bot, update, audio_path, output_dir, normalized_url, video_info_message,

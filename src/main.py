@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1711"
+version_number = "0.1712"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -104,6 +104,8 @@ class TranscriberBot:
     def __init__(self):
         self.start_time = datetime.now()        
 
+        self.notification_settings = notification_settings
+
         self.token = get_bot_token()
         self.task_queue = asyncio.Queue()  # queue tasks
         self.is_processing = asyncio.Lock()  # Lock to ensure one transcription at a time
@@ -177,50 +179,73 @@ class TranscriberBot:
         await update.message.reply_text(welcome_message, parse_mode='HTML')
 
     async def handle_message(self, update: Update, context: CallbackContext) -> None:
-        user_id = update.effective_user.id  # Update the user_id
-        message_text = update.message.text  # Get the text of the message received
-
-        # Log the received message along with the user ID
+        user_id = update.effective_user.id
+        message_text = update.message.text
         logger.info(f"Received a message from user ID {user_id}: {message_text}")
 
-        # Cooldown logic
+        # ~~~~~ Cooldown logic ~~~~~
         now = datetime.now()
         last_request_time = self.user_last_request[user_id]
         if (now - last_request_time).seconds < self.cooldown_seconds:
-            await update.message.reply_text(f"Please wait {self.cooldown_seconds - (now - last_request_time).seconds} seconds before making another request.")
+            await update.message.reply_text(
+                f"Please wait {self.cooldown_seconds - (now - last_request_time).seconds} seconds "
+                "before making another request."
+            )
             return
 
-        # Rate limiting logic
+        # ~~~~~ Rate limiting logic ~~~~~
         minute_ago = now - timedelta(minutes=1)
-        if self.user_request_counts[user_id] >= self.max_requests_per_minute and last_request_time > minute_ago:
-            await update.message.reply_text("You have reached the maximum number of requests per minute. Please try again later.")
+        if (
+            self.user_request_counts[user_id] >= self.max_requests_per_minute
+            and last_request_time > minute_ago
+        ):
+            await update.message.reply_text(
+                "You have reached the maximum number of requests per minute. Please try again later."
+            )
             return
 
-        # Update request count and last request time
+        # Update request count and time
         if last_request_time < minute_ago:
-            self.user_request_counts[user_id] = 0  # Reset the count if the last request was over a minute ago
+            self.user_request_counts[user_id] = 0
 
         self.user_request_counts[user_id] += 1
         self.user_last_request[user_id] = now
 
-        # Check and log the model before starting transcription
+        # Log the model (optional)
         current_model = get_whisper_model(user_id)
         logger.debug(f"Current model for user {user_id} before transcription: {current_model}")
 
-        if update.message and update.message.text:
-            urls = re.findall(r'(https?://\S+)', update.message.text)
-
+        if update.message and message_text:
+            # See if there's at least one URL
+            urls = re.findall(r'(https?://\S+)', message_text)
             if urls:
-                await self.task_queue.put((update.message.text, context.bot, update))
+                # It’s a valid URL => queue it
+                await self.task_queue.put((message_text, context.bot, update))
                 queue_length = self.task_queue.qsize()
-
                 logger.info(f"Task added to the queue. Current queue size: {queue_length}")
 
-                # Check if this is the only job and nothing is currently processing.
-                response_text = "⏳ Your request is next and is currently being processed." if queue_length == 1 else f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
-                await update.message.reply_text(response_text)
+                # ~~~~~ Access your config-based messages ~~~~~
+                msg_next = self.notification_settings['queue_message_next']     # e.g. "⏳ Your request is next..."
+                msg_queued = self.notification_settings['queue_message_queued'] # e.g. "Your request has been added..."
+
+                if queue_length == 1:
+                    # Only job => "next" message
+                    if msg_next.strip():  # only send if user didn't leave it blank
+                        await update.message.reply_text(msg_next)
+                else:
+                    # There's a backlog => "queued" message
+                    if msg_queued.strip():
+                        jobs_ahead = queue_length - 1
+                        # Insert placeholder if any
+                        final_text = msg_queued.replace("{jobs_ahead}", str(jobs_ahead))
+                        await update.message.reply_text(final_text)
+
             else:
-                await update.message.reply_text("❌ No valid URL detected in your message. Please send a message that includes a valid URL. If you need help, type: /help")
+                # No valid URL => do what you were doing before
+                await update.message.reply_text(
+                    "❌ No valid URL detected in your message. "
+                    "Please send a message that includes a valid URL. If you need help, type: /help"
+                )
 
     # async def process_queue(self):
     #     while True:
@@ -260,23 +285,35 @@ class TranscriberBot:
                                 logger.info(f"Processing audio/video file: {task}")
 
                                 best_gpu = get_best_gpu()
+                                gpu_template = self.notification_settings['gpu_message_template']
+                                gpu_no_gpu   = self.notification_settings['gpu_message_no_gpu']
+
+                                # We'll store the final text in `gpu_message`:
+                                gpu_message = ""
+
                                 if best_gpu:
                                     device = f'cuda:{best_gpu.id}'
-                                    gpu_message = (
-                                        f"Using GPU {best_gpu.id}: {best_gpu.name}\n"
-                                        f"Free Memory: {best_gpu.memoryFree} MB\n"
-                                        f"Load: {best_gpu.load * 100:.1f}%"
-                                    )
+                                    if gpu_template.strip():
+                                        gpu_message = gpu_template.format(
+                                            gpu_id=best_gpu.id,
+                                            gpu_name=best_gpu.name,
+                                            gpu_free=best_gpu.memoryFree,
+                                            gpu_load=f"{best_gpu.load * 100:.1f}"
+                                        )
                                 else:
                                     device = 'cpu'
-                                    gpu_message = "No GPU available, using CPU for transcription."
+                                    if gpu_no_gpu.strip():
+                                        gpu_message = gpu_no_gpu
 
-                                logger.info(gpu_message)
-                                try:
-                                    await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
-                                except Exception as e:
-                                    logger.error(f"Failed to send GPU message: {e}")
+                                # Now, if we ended up with a non-empty `gpu_message`, let's log + send it:
+                                if gpu_message.strip():
+                                    logger.info(gpu_message)
+                                    try:
+                                        await bot.send_message(chat_id=update.effective_chat.id, text=gpu_message)
+                                    except Exception as e:
+                                        logger.error(f"Failed to send GPU message: {e}")
 
+                                # get the audio duration
                                 audio_duration = get_audio_duration(task)
                                 if audio_duration is None:
                                     try:
@@ -298,20 +335,22 @@ class TranscriberBot:
 
                                 formatted_audio_duration = format_duration(audio_duration)
                                 language_setting = language if language else "autodetection"
-                                detailed_message = (
-                                    f"Audio file length:\n{formatted_audio_duration}\n\n"
-                                    f"Whisper model in use:\n{model}\n\n"
-                                    f"Model language set to:\n{language_setting}\n\n"
-                                    f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
-                                    f"Time now:\n{time_now_str}\n\n"
-                                    f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
-                                    "Transcribing audio..."
-                                )
-                                logger.info(detailed_message)
-                                try:
-                                    await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
-                                except Exception as e:
-                                    logger.error(f"Failed to send detailed message: {e}")
+
+                                if self.notification_settings['send_detailed_info']:
+                                    detailed_message = (
+                                        f"Audio file length:\n{formatted_audio_duration}\n\n"
+                                        f"Whisper model in use:\n{model}\n\n"
+                                        f"Model language set to:\n{language_setting}\n\n"
+                                        f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
+                                        f"Time now:\n{time_now_str}\n\n"
+                                        f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
+                                        "Transcribing audio..."
+                                    )
+                                    logger.info(detailed_message)
+                                    try:
+                                        await bot.send_message(chat_id=update.effective_chat.id, text=detailed_message)
+                                    except Exception as e:
+                                        logger.error(f"Failed to send detailed message: {e}")
 
                                 transcription_paths, raw_content = await transcribe_audio(
                                     bot, update, task, self.output_dir, "", video_info_message,
@@ -606,11 +645,29 @@ class TranscriberBot:
         try:
             subprocess.run(['ffmpeg', '-i', ogg_file_path, wav_file_path], check=True)
             logger.info(f"Converted voice message to WAV format: {wav_file_path}")
-            
+
+            # Put the WAV file into the queue
             await self.task_queue.put((wav_file_path, context.bot, update))
             queue_length = self.task_queue.qsize()
-            response_text = "Your request is next and is currently being processed." if queue_length == 1 else f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
-            await update.message.reply_text(response_text)
+
+            # Load the config-based queue messages:
+            msg_next = self.notification_settings['queue_message_next']     # e.g. "⏳ Your request is next..."
+            msg_queued = self.notification_settings['queue_message_queued'] # e.g. "Your request has been added..."
+
+            # Decide what message to show based on queue length
+            if queue_length == 1:
+                # If it's the only job in queue, show the “next” message (if not blank)
+                if msg_next.strip():
+                    await update.message.reply_text(msg_next)
+            else:
+                # If there's already something in queue, show the “queued” message (if not blank)
+                if msg_queued.strip():
+                    jobs_ahead = queue_length - 1
+                    final_text = msg_queued.replace("{jobs_ahead}", str(jobs_ahead))
+                    await update.message.reply_text(final_text)
+
+            logger.info(f"File queued for transcription. Queue length: {queue_length}")
+
         except subprocess.CalledProcessError as e:
             logger.error(f"Error converting voice message: {e}")
 
@@ -678,13 +735,25 @@ class TranscriberBot:
             # Queue the file for transcription
             await self.task_queue.put((file_path, context.bot, update))
             queue_length = self.task_queue.qsize()
-            response_text = (
-                "Your request is next and is currently being processed."
-                if queue_length == 1
-                else f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
-            )
-            await update.message.reply_text(response_text)
+
+            # Load the config-based queue messages:
+            msg_next = self.notification_settings['queue_message_next']     # e.g. "⏳ Your request is next..."
+            msg_queued = self.notification_settings['queue_message_queued'] # e.g. "Your request has been added..."
+
+            # Decide what message to show based on queue length
+            if queue_length == 1:
+                # If it's the only job in queue, show the “next” message (if not blank)
+                if msg_next.strip():
+                    await update.message.reply_text(msg_next)
+            else:
+                # If there's already something in queue, show the “queued” message (if not blank)
+                if msg_queued.strip():
+                    jobs_ahead = queue_length - 1
+                    final_text = msg_queued.replace("{jobs_ahead}", str(jobs_ahead))
+                    await update.message.reply_text(final_text)            
+            
             logger.info(f"File queued for transcription. Queue length: {queue_length}")
+
         except Exception as e:
             logger.error(f"Exception in handle_audio_file: {e}")
             await update.message.reply_text("An error occurred while processing your file.")

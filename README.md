@@ -196,6 +196,12 @@ After launching your bot successfully, you can interact with it via Telegram (se
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Changes
+- v0.1712 - More configuration options for user notifications
+   - Added two new booleans in `config.ini` under `[NotificationSettings]`:
+     - `send_video_info` (default: `true`): Whether the bot should send video metadata (title, duration, channel info, etc.) to the user in Telegram. If `false`, the info is still logged to console, but not sent to the user.
+     - `send_detailed_info` (default: `true`): Whether the bot should send a detailed “transcription process info” message (model name, language, estimated time, etc.) to the user in Telegram. Even if disabled, the console/logger still records the detailed info.
+   - Fixed a bug related to referencing an uninitialized `detailed_message` variable when `send_detailed_info = false`.
+   - Minor code cleanups and improved error handling.
 - v0.1711 - **🍪 Cookie handling is here!**
    - see `config.ini` for `yt-dlp` options to set up your cookies
    - this will make it easier to enable seamless operation with no interruptions when using some video platforms & services

@@ -40,7 +40,42 @@ class ConfigLoader:
         send_completion_message = config.getboolean('NotificationSettings', 'sendcompletionmessage', fallback=True)
         completion_message = config.get('NotificationSettings', 'completionmessage', fallback="Transcription complete. Have a nice day!")
         
+        # === New lines for your queue, GPU, and audio info messages ===
+        queue_message_next = config.get(
+            'NotificationSettings', 'queue_message_next',
+            fallback="⏳ Your request is next and is currently being processed."
+        )
+        queue_message_queued = config.get(
+            'NotificationSettings', 'queue_message_queued',
+            fallback="⏳ Your request has been added to the queue. There are {jobs_ahead} jobs ahead of yours."
+        )
+        audio_info_message = config.get(
+            'NotificationSettings', 'audio_info_message',
+            fallback="Audio file length:\n{audio_duration}\n\nWhisper model in use:\n{model}\n\n"
+                     "Model language set to:\n{language}\n\nEstimated transcription time:\n{est_time:.1f} minutes.\n\n"
+                     "Transcribing audio..."
+        )
+        gpu_message_template = config.get(
+            'NotificationSettings', 'gpu_message_template',
+            fallback="Using GPU {gpu_id}: {gpu_name}\nFree Memory: {gpu_free} MB\nLoad: {gpu_load}%"
+        )
+
+        gpu_message_no_gpu = config.get(
+            'NotificationSettings', 'gpu_message_no_gpu',
+            fallback="⚠️ No GPU available, using CPU for transcription. WARNING: this will be slow."
+        )
+
+        send_video_info = config.getboolean('NotificationSettings', 'send_video_info', fallback=True)
+        send_detailed_info = config.getboolean('NotificationSettings', 'send_detailed_info', fallback=True)
+
         return {
+            'queue_message_next': queue_message_next,
+            'queue_message_queued': queue_message_queued,
+            'audio_info_message': audio_info_message,
+            'gpu_message_template': gpu_message_template,
+            'gpu_message_no_gpu': gpu_message_no_gpu,
+            'send_video_info': send_video_info,
+            'send_detailed_info': send_detailed_info,            
             'send_completion_message': send_completion_message,
             'completion_message': completion_message
         }
