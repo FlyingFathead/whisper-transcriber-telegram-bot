@@ -196,7 +196,9 @@ After launching your bot successfully, you can interact with it via Telegram (se
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Updating
-**(New in v0.1712)** You can now update your existing or older version `config.ini` with the configuration merger tool that is located in `./src/utils/configmerger.py`. In the project's main directory, simply type i.e.:
+**(New in v0.1712)** You can now update your existing or older `config.ini` with the configuration merger tool that is now located in `./src/utils/configmerger.py`. 
+
+While in the project's main directory, simply type i.e.:
 
 ```bash
 ./src/utils/configmerger.py /path/to/your_old_or_custom_config.ini
@@ -208,6 +210,12 @@ Or, to try a merge of two files by defining the directories:
 
 ```bash
 ./src/utils/configmerger.py /path/to/main/config.ini /path/to/your_config.ini
+```
+
+Or, if you just need to see the merge options, type:
+
+```bash
+./src/utils/configmerger.py
 ```
 
 ## Changes
