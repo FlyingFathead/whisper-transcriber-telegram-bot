@@ -224,7 +224,8 @@ If you just need to see the options, type:
      - `send_video_info` (default: `true`): Whether the bot should send video metadata (title, duration, channel info, etc.) to the user in Telegram. If `false`, the info is still logged to console, but not sent to the user.
      - `send_detailed_info` (default: `true`): Whether the bot should send a detailed “transcription process info” message (model name, language, estimated time, etc.) to the user in Telegram. Even if disabled, the console/logger still records the detailed info.
    - Fixed a bug related to referencing an uninitialized `detailed_message` variable when `send_detailed_info = false`.
-   - Added `./src/utils/configmerger.py` for easier updating with your own pre-existing configuration files
+   - Added `./src/utils/configmerger.py` as a tool for easier updating with your own pre-existing configuration files
+   - _(There is also `./src/utils/configmerger_alt.py` that uses a separate type of parsing if you really need to keep your comments)_
 - v0.1711 - **🍪 Cookie handling is here!**
    - see `config.ini` for `yt-dlp` options to set up your cookies
    - this will make it easier to enable seamless operation with no interruptions when using some video platforms & services
