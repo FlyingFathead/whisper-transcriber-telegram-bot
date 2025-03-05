@@ -62,16 +62,23 @@ class ConfigLoader:
             'NotificationSettings', 'queue_message_queued',
             fallback="⏳ Your request has been added to the queue. There are {jobs_ahead} jobs ahead of yours."
         )
-        audio_info_message = config.get(
+        audio_info_message_raw = config.get(
             'NotificationSettings', 'audio_info_message',
             fallback="Audio file length:\n{audio_duration}\n\nWhisper model in use:\n{model}\n\n"
                      "Model language set to:\n{language}\n\nEstimated transcription time:\n{est_time:.1f} minutes.\n\n"
                      "Transcribing audio..."
         )
-        gpu_message_template = config.get(
+
+        # Convert \n → actual newlines
+        audio_info_message = _parse_newlines(audio_info_message_raw)
+
+        gpu_message_template_raw = config.get(
             'NotificationSettings', 'gpu_message_template',
             fallback="Using GPU {gpu_id}: {gpu_name}\nFree Memory: {gpu_free} MB\nLoad: {gpu_load}%"
         )
+
+        # Convert \n → actual newlines
+        gpu_message_template = _parse_newlines(gpu_message_template_raw)
 
         gpu_message_no_gpu = config.get(
             'NotificationSettings', 'gpu_message_no_gpu',
