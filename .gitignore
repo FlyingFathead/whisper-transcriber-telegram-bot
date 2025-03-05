@@ -1,6 +1,8 @@
 # Ignore the cookies.txt file in config
 cookies.txt
 config/cookies.txt
+config/alt_config.ini
+config/*.bak
 
 # Ignore all files named bot_token.txt
 **/bot_token.txt
@@ -46,3 +48,5 @@ venv/
 # log files
 *.log
 
+# backup files
+*.bak
