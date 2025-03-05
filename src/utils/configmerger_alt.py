@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# configmerger.py (config.ini merger) for the Whisper Transcriber Telegram Bot
+# (https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/)
+
 """
 configmerger.py
 Line-based config merger for INI-like files, preserving comments and ordering.
