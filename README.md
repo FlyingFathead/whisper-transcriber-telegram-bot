@@ -2,7 +2,7 @@
 
 A local Whisper AI transcriber bot for Telegram, utilizing local GPU's or CPU for processing. No Whisper API access required -- just utilize whatever available hardware you have. The bot uses `GPUtil` to automatically select an available CUDA GPU, or reverts to CPU-only if none is found.
 
-**Runs on the latest Whisper v3 `turbo` model (released Sept 30, 2024) by default.** Models can be selected both from `config.ini` and with the user command `/model`.
+**Runs on the latest OpenAI Whisper v3 `turbo` model by default** (as of September 2024). Models can be selected both from `config.ini` and i.e. with the user command `/model`.
 
 The program has been written in Python and it works on Python version `3.10+`, tested up to Python `3.12.2`.
 
