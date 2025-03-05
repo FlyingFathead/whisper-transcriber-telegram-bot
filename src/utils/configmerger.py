@@ -88,7 +88,7 @@ def make_backup_if_needed(main_path, backup_dir):
     i = 1
     while os.path.exists(backup_candidate):
         # If e.g. "config.ini.bak" exists, try "config.ini.bak1", etc.
-        backup_candidate = os.path.join(backup_dir, f"{base_name}.bak{i}")
+        backup_candidate = os.path.join(backup_dir, f"{base_name}_{i}.bak")
         i += 1
 
     # Copy main_path -> backup_candidate
