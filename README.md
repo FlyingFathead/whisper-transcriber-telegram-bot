@@ -206,13 +206,13 @@ While in the project's main directory, simply type i.e.:
 
 It will merge your own configuration with the project's current `config.ini` under the `config/` directory.
 
-Or, to try a merge of two files by defining the directories:
+Or, to merge two files by, define both:
 
 ```bash
 ./src/utils/configmerger.py /path/to/main/config.ini /path/to/your_config.ini
 ```
 
-If you just need to see the options, type:
+If you just need to see the options and help, type:
 
 ```bash
 ./src/utils/configmerger.py
