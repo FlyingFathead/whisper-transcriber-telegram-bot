@@ -221,8 +221,8 @@ If you just need to see the options and help, type:
 ## Changes
 - v0.1713 - Added customizable `yt-dlp` commands to `config.ini` under `custom_yt_dlp_args`
    - Leave the entry blank if you don't want any custom commands to be added.
-   - Adding custom commands might help with some sites that have i.e. chunking problems during download, etc.
-- v0.1712 - More configuration options for user notifications
+   - Adding custom commands might help with some sites that have i.e. chunking problems during download, or if you need to tweak something, etc.
+- v0.1712 - More configuration options for user notifications.
    - Added two new booleans in `config.ini` under `[NotificationSettings]`:
      - `send_video_info` (default: `true`): Whether the bot should send video metadata (title, duration, channel info, etc.) to the user in Telegram. If `false`, the info is still logged to console, but not sent to the user.
      - `send_detailed_info` (default: `true`): Whether the bot should send a detailed “transcription process info” message (model name, language, estimated time, etc.) to the user in Telegram. Even if disabled, the console/logger still records the detailed info.
