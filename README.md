@@ -222,9 +222,10 @@ If you just need to see the options and help, type:
 - v0.1714 - **More fixes**
    - Graceful passing of description fetching errors
       => (`yt-dlp` pushes onward w/ warnings if the description fetch yielded errors)
-   - Default client behavior changed to suit YouTube better when using `yt-dlp` (Android client in custom arguments as default in `config.ini`)
+   - Default client behavior changed to suit YouTube better when using `yt-dlp` (Android client in custom `yt-dlp` arguments as default in `config.ini`)
    - Added `[Delays]` section to `config.ini`
-      => Set up delays between description and video fetching to avoid snags; user configurable
+      => Set up delays between description and video fetching to avoid snags; user configurable delay times
+   - Version number now visible on startup hello (if enabled for bot owner[s])
 - v0.1713 - Added customizable `yt-dlp` commands to `config.ini` under `custom_yt_dlp_args`
    - Leave the entry blank if you don't want any custom commands to be added.
    - Adding custom commands might help with some sites that have i.e. chunking problems during download, or if you need to tweak something, etc.
