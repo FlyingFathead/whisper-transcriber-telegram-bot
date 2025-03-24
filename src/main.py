@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1713"
+version_number = "0.1714"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -911,7 +911,7 @@ class TranscriberBot:
                                 await app.bot.send_message(
                                     chat_id=owner_id,
                                     text=(
-                                        "<b>👋🤖 Whisper Transcriber Bot is now online!</b>\n"
+                                        f"<b>👋🤖 Whisper Transcriber Bot (v{version_number}) is now online!</b>\n"
                                         f"\nStart time: {start_time_utc} (UTC)"
                                         f"\nLocal time: {start_time_local}"                                        
                                     ),

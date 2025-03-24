@@ -600,10 +600,24 @@ async def transcribe_audio(bot, update, audio_path, output_dir, youtube_url, vid
         logger.error(f"An error occurred during transcription: {e}")
         return {}, ""
 
+# debugger for yt-dlp version
+async def debug_yt_dlp_version():
+    proc = await asyncio.create_subprocess_exec(
+        "yt-dlp", "--version",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    out, err = await proc.communicate()
+    logger.info(f"DEBUG: 'yt-dlp --version' -> {out.decode().strip()}")
 
 # Process the message's URL and keep the user informed
 # (Added in the new GPU logging function call to the process_url_message function)
 async def process_url_message(message_text, bot, update, model, language):
+
+    # fetch delays
+    config = ConfigLoader.get_config()
+    desc_fetch_delay = config.getfloat('Delays', 'descriptionfetchdelay', fallback=0.0)
+
     try:
         # Get transcription settings
         transcription_settings = get_transcription_settings()
@@ -612,6 +626,9 @@ async def process_url_message(message_text, bot, update, model, language):
         gpu_no_gpu   = notification_settings['gpu_message_no_gpu']
         should_send_detailed_info = notification_settings['send_detailed_info']
         send_video_info = notification_settings['send_video_info'] 
+
+        # for yt-dlp version debugging
+        await debug_yt_dlp_version()
 
         logger.info(f"Transcription settings in process_url_message: {transcription_settings}")
 
@@ -645,32 +662,82 @@ async def process_url_message(message_text, bot, update, model, language):
             audio_path = os.path.join(audio_dir, audio_file_name)
             video_info_message = "Transcription initiated."
 
-            # Wrap fetch_video_details in try-except
+            # get the video details first; graceful passthrough if broken
             try:
                 logger.info("Fetching video details...")
                 details = await fetch_video_details(normalized_url)
                 details['video_url'] = normalized_url
-                video_info_message = create_video_info_message(details)
-
-                # Only send if config says so
-                if send_video_info:
-                    for part in split_message(video_info_message):
-                        await bot.send_message(
-                            chat_id=update.effective_chat.id,
-                            text=f"<code>{part}</code>",
-                            parse_mode='HTML'
-                        )
 
             except Exception as e:
-                error_message = str(e)
-                logger.error(f"An error occurred while fetching video details: {error_message}")
-                # await bot.send_message(chat_id=update.effective_chat.id, text=f"❌ Error: {error_message}")
+                # WARN instead of abort
+                logger.warning(f"Could not fetch video details for '{normalized_url}'. Continuing anyway.\nError: {e}")
                 await bot.send_message(
                     chat_id=update.effective_chat.id, 
-                    text=f"❌ Error: {error_message}", 
+                    text="⚠️ WARNING: Could not fetch video description. Continuing with audio download...",
                     disable_web_page_preview=True
                 )
-                continue  # Skip to the next URL if any
+                # Provide a fallback for create_video_info_message()
+                details = {
+                    'title':           '???',
+                    'duration':        0,
+                    'channel':         '???',
+                    'upload_date':     '?',
+                    'views':           '?',
+                    'likes':           '?',
+                    'average_rating':  '?',
+                    'comment_count':   '?',
+                    'channel_id':      '?',
+                    'video_id':        '?',
+                    'video_url':       normalized_url,
+                    'tags':            [],
+                    'description':     'No description available',
+                    'audio_duration':  0
+                }
+
+            # Now create a (possibly placeholder) message
+            video_info_message = create_video_info_message(details)
+
+            # Only send if config says so
+            if send_video_info and video_info_message.strip():
+                for part in split_message(video_info_message):
+                    await bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=f"<code>{part}</code>",
+                        parse_mode='HTML'
+                    )
+
+            # # // (old method)
+            # # Wrap fetch_video_details in try-except
+            # try:
+            #     logger.info("Fetching video details...")
+            #     details = await fetch_video_details(normalized_url)
+            #     details['video_url'] = normalized_url
+            #     video_info_message = create_video_info_message(details)
+
+            #     # Only send if config says so
+            #     if send_video_info:
+            #         for part in split_message(video_info_message):
+            #             await bot.send_message(
+            #                 chat_id=update.effective_chat.id,
+            #                 text=f"<code>{part}</code>",
+            #                 parse_mode='HTML'
+            #             )
+
+            # except Exception as e:
+            #     error_message = str(e)
+            #     logger.error(f"An error occurred while fetching video details: {error_message}")
+            #     # await bot.send_message(chat_id=update.effective_chat.id, text=f"❌ Error: {error_message}")
+            #     await bot.send_message(
+            #         chat_id=update.effective_chat.id, 
+            #         text=f"❌ Error: {error_message}", 
+            #         disable_web_page_preview=True
+            #     )
+            #     continue  # Skip to the next URL if any
+
+            # If we do want to wait after any attempt:
+            if desc_fetch_delay > 0:
+                logger.info(f"Waiting {desc_fetch_delay} second(s) after fetching description...")
+                await asyncio.sleep(desc_fetch_delay)
 
             await bot.send_message(chat_id=update.effective_chat.id, text="📥 Fetching the audio track...")
 
