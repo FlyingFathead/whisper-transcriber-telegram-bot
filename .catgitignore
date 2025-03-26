@@ -1,5 +1,5 @@
 # files to be ignored when dumped with `catgit`
 # https://github.com/FlyingFathead/catgit
-README.md
-tests/diarize_with_whisper-test.py
-utils/resemblyzer_safety_check.py
+#README.md
+#tests/diarize_with_whisper-test.py
+#utils/resemblyzer_safety_check.py
