@@ -219,6 +219,11 @@ If you just need to see the options and help, type:
 ```
 
 ## Changes
+- v0.1715 - **Timestamped TXT Output & Startup Ping Logging**
+   - Added new config option `send_timestamped_txt` under `[TranscriptionSettings]` in `config.ini`.
+   - If `sendasfiles = true` and `send_timestamped_txt = true`, the bot now generates and sends an additional `*_timestamped.txt` file along with the standard `.txt`, `.srt`, and `.vtt` files.
+   - This timestamped file contains the transcription with `[mm:ss]` prefixes for each line, derived from the SRT timings.
+   - Added logging confirmation when the startup "hello" message (`ping_owners_on_start = true`) is enabled and attempted to be sent to owner IDs.   
 - v0.1714 - **More fixes**
    - Graceful passing of description fetching errors
       => (`yt-dlp` pushes onward w/ warnings if the description fetch yielded errors)
