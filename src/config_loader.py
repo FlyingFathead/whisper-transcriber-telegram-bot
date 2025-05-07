@@ -40,6 +40,19 @@ class ConfigLoader:
             cls()
         return cls._config
 
+    @classmethod
+    def get_transcription_settings(cls):
+        config = cls.get_config()
+        transcription_settings = {
+            'include_header': config.getboolean('TranscriptionSettings', 'includeheaderintranscription', fallback=False),
+            'keep_audio_files': config.getboolean('TranscriptionSettings', 'keepaudiofiles', fallback=False),
+            'send_as_files': config.getboolean('TranscriptionSettings', 'sendasfiles', fallback=True),
+            'send_timestamped_txt': config.getboolean('TranscriptionSettings', 'send_timestamped_txt', fallback=False), # ADDED, default to False
+            'send_as_messages': config.getboolean('TranscriptionSettings', 'sendasmessages', fallback=False),
+        }
+        logger.info(f"Loaded transcription settings: {transcription_settings}")
+        return transcription_settings
+
     # NEW: Method to get Notification Settings
     @classmethod
     def get_notification_settings(cls):
