@@ -29,7 +29,8 @@ Can be safely installed and deployed with [Docker](https://www.docker.com/) by u
    - _(auto-switching to CPU-only mode if no CUDA GPU is available)_
 - 📝 Transcribes audio using OpenAI's Whisper model (can be user-selected with `/model`)
    - _(see [openai/whisper](https://github.com/openai/whisper/) for more info on Whisper)_
-- 📄 Returns transcription in text, SRT, and VTT formats
+- 📄 Returns transcription as messages and/or in TXT, SRT, and VTT formats (user configurable)
+   - Plaintext (TXT) outputs can be configured to include video description and/or timestamps
 - 🔄 Handles concurrent transcription requests efficiently with async & task queuing
 - 🕒 Features an asynchronous automatic queue system to manage multiple transcription requests seamlessly
 
