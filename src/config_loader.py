@@ -133,6 +133,37 @@ class ConfigLoader:
             'domains': domain_list
         }
 
+    @classmethod
+    def get_special_domain_commands(cls):
+        """
+        Returns a dict of domain -> custom yt-dlp argument string,
+        parsed from 'special_domain_commands' in the [YTDLPSettings] section.
+        """
+        config = cls.get_config()
+
+        # Only parse them if usage is enabled
+        enabled = config.getboolean("YTDLPSettings", "use_special_commands_for_domains", fallback=False)
+        if not enabled:
+            return {}  # No special commands if disabled
+
+        raw = config.get("YTDLPSettings", "special_domain_commands", fallback="").strip()
+        if not raw:
+            return {}
+
+        commands = {}
+        for line in raw.splitlines():
+            line = line.strip()
+            # Skip empty lines or comment lines if you want
+            if not line or line.startswith("#"):
+                continue
+            if '|' not in line:
+                continue
+            domain, args = line.split('|', 1)
+            domain = domain.strip().lower()
+            args = args.strip()
+            commands[domain] = args
+        return commands
+
     # get the owner ID's and ping on startup if needed
     @classmethod
     def get_owner_ids(cls):

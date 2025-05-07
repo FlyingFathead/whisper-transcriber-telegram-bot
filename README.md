@@ -220,6 +220,14 @@ If you just need to see the options and help, type:
 ```
 
 ## Changes
+- v0.1716 - **NEW: Configurable per-domain yt-dlp arguments**
+  - Added new `[YTDLPSettings]` config options:
+    - `use_special_commands_for_domains = true` (set to `true` to enable)
+    - `special_domain_commands = ...` (multiline string)  
+  - Lets you specify domain-specific yt-dlp arguments (e.g., `--http-chunk-size 0 --downloader native`) for problematic sites like Rumble, BitChute, Odysee, etc.
+  - (list can be expanded by the user in `config.ini` as needed)   
+  - This approach solves repeated “Separator not found” or TCP/SSL connection errors by applying fallback flags/headers strictly to domains known to need them—without affecting other sites or default performance.
+  - The bot automatically detects if the domain portion of the URL matches your `special_domain_commands` and injects those extra yt-dlp flags into the download process, eliminating chunking/SSL issues specific to that site.
 - v0.1715 - **Timestamped TXT Output & Startup Ping Logging**
    - Added new config option `send_timestamped_txt` under `[TranscriptionSettings]` in `config.ini`.
    - If `sendasfiles = true` and `send_timestamped_txt = true`, the bot now generates and sends an additional `*_timestamped.txt` file along with the standard `.txt`, `.srt`, and `.vtt` files.

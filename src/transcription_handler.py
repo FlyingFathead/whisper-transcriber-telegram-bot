@@ -20,6 +20,7 @@ import textwrap
 import configparser
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
+from shlex import split as shlex_split
 # import wave
 from pydub import AudioSegment
 
@@ -239,13 +240,27 @@ async def download_audio(url, audio_path):
         else:
             logger.warning(f"Cookies file not found: {cookies_file}")
 
+    # <<< ADDED FOR SPECIAL DOMAIN CMDS >>>
+    # load special domain commands from config
+    special_commands = ConfigLoader.get_special_domain_commands()
+
     parsed_url = urlparse(url)
     domain = parsed_url.netloc.lower()
     if domain.startswith('www.'):
         domain = domain[4:]  # Remove 'www.'
 
+    # If domain is in special_commands, parse them into a list
+    domain_args = []
+    if domain in special_commands:
+        logger.info(f"Applying special yt-dlp args for domain '{domain}': {special_commands[domain]}")
+        domain_args = shlex.split(special_commands[domain])
+
     should_download_video = ytdlp_settings['active'] and domain in ytdlp_settings['domains']
 
+    # ---------------------------------------------------
+    #                 VIDEO DOWNLOAD PATH
+    # ---------------------------------------------------
+  
     if should_download_video:
         logger.info("Identified domain requiring full video download.")
         # Step 1: Get available formats in JSON
@@ -256,14 +271,15 @@ async def download_audio(url, audio_path):
             url
         ]
 
-        # If there are custom args, parse them into a list and extend the command
+        # <<< ADDED FOR SPECIAL DOMAIN CMDS >>>
+        # Insert domain-specific args right after "yt-dlp"
+        if domain_args:
+            command[1:1] = domain_args
+
         if extra_args_str:
             extra_args_list = shlex.split(extra_args_str)
             logger.info(f"Using custom yt-dlp arguments from config: {extra_args_list}")
-            # Insert them right after 'yt-dlp':
             command[1:1] = extra_args_list
-            # Or place them at the end:
-            # command.extend(extra_args_list)
 
         # Apply cache settings based on config
         if no_cache_dir:
@@ -356,14 +372,25 @@ async def download_audio(url, audio_path):
             url
         ]
 
-        # If there are custom args, parse them into a list and extend the command
+        # <<< ADDED FOR SPECIAL DOMAIN CMDS >>>
+        # Insert domain_args, then extra_args_str if present
+        if domain_args:
+            command[1:1] = domain_args
+
         if extra_args_str:
             extra_args_list = shlex.split(extra_args_str)
             logger.info(f"Using custom yt-dlp arguments from config: {extra_args_list}")
-            # Insert them right after 'yt-dlp':
             command[1:1] = extra_args_list
-            # Or place them at the end:
-            # command.extend(extra_args_list)
+
+        # # // old method
+        # # If there are custom args, parse them into a list and extend the command
+        # if extra_args_str:
+        #     extra_args_list = shlex.split(extra_args_str)
+        #     logger.info(f"Using custom yt-dlp arguments from config: {extra_args_list}")
+        #     # Insert them right after 'yt-dlp':
+        #     command[1:1] = extra_args_list
+        #     # Or place them at the end:
+        #     # command.extend(extra_args_list)
 
         # if use_cookies_file and os.path.exists(cookies_file):
         #     command.extend(["--cookies", cookies_file])
@@ -395,17 +422,27 @@ async def download_audio(url, audio_path):
             url
         ]
 
-        # If there are custom args, parse them into a list and extend the command
+        # <<< ADDED FOR SPECIAL DOMAIN CMDS >>>
+        if domain_args:
+            command[1:1] = domain_args
+
         if extra_args_str:
             extra_args_list = shlex.split(extra_args_str)
             logger.info(f"Using custom yt-dlp arguments from config: {extra_args_list}")
-            # Insert them right after 'yt-dlp':
             command[1:1] = extra_args_list
-            # Or place them at the end:
-            # command.extend(extra_args_list)
 
-        # if use_cookies_file and os.path.exists(cookies_file):
-        #     command.extend(["--cookies", cookies_file])
+        # # /// old method
+        # # If there are custom args, parse them into a list and extend the command
+        # if extra_args_str:
+        #     extra_args_list = shlex.split(extra_args_str)
+        #     logger.info(f"Using custom yt-dlp arguments from config: {extra_args_list}")
+        #     # Insert them right after 'yt-dlp':
+        #     command[1:1] = extra_args_list
+        #     # Or place them at the end:
+        #     # command.extend(extra_args_list)
+
+        # # if use_cookies_file and os.path.exists(cookies_file):
+        # #     command.extend(["--cookies", cookies_file])
 
         # apply the cache logic
         if no_cache_dir:
