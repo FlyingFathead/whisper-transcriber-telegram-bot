@@ -220,7 +220,11 @@ If you just need to see the options and help, type:
 ```
 
 ## Changes
-- v0.1717 - Timestamped output fixed in multi-hour videos
+- v0.1717 - **Timestamp formatting fixes & dynamic hour display**
+  - Fixed a bug where `_timestamped.txt` files would incorrectly drop the hour from timestamps (e.g., a timestamp of `1:23:45` would appear as `[23:45]`).
+  - Introduced dynamic timestamp formatting, which is on by default. Timestamps for moments under the one-hour mark are now shown in a shortened `[mm:ss]` format. Once a transcription passes the one-hour mark, timestamps automatically switch to the full `[hh:mm:ss]` format within the same file.
+  - This behavior is controlled by the new `shorten_timestamps_under_one_hour` flag in `config.ini` and is set to `true` by default. Set it to `false` to force the full `[hh:mm:ss]` format for all timestamps.
+  - Added a log message to confirm which formatting mode is active when generating the timestamped file.
 - v0.1716 - **NEW: Configurable per-domain yt-dlp arguments**
   - Added new `[YTDLPSettings]` config options:
     - `use_special_commands_for_domains = true` (set to `true` to enable)

@@ -1118,14 +1118,26 @@ def format_srt_time_to_timestamp_prefix(time_str: str) -> str:
     except Exception as e:
         logger.error(f"Error formatting SRT time '{time_str}': {e}")
         return f"[{time_str.split(',')[0]}]"  # Return a basic timestamp as fallback
-
-# Helper function to create timestamped TXT from SRT (as provided before)
+    
+# Helper function to create timestamped TXT from SRT
 def create_timestamped_txt_from_srt(srt_path: str, output_txt_path: str, header_content: str = "") -> bool:
     try:
+        # Load the relevant config setting
+        settings = ConfigLoader.get_transcription_settings()
+        should_shorten = settings.get('shorten_timestamps_under_one_hour', True)
+
+        # --- NEW LOGGING BLOCK ---
+        if should_shorten:
+            logger.info("Timestamp formatting: Shortening timestamps for entries under one hour (e.g., [mm:ss]).")
+        else:
+            logger.info("Timestamp formatting: Using full hh:mm:ss format for all entries as per configuration.")
+        # --- END OF NEW LOGGING BLOCK ---
+
         with open(srt_path, 'r', encoding='utf-8') as srt_file, \
              open(output_txt_path, 'w', encoding='utf-8') as txt_file:
+            
             if header_content:
-                txt_file.write(header_content) # header_content should already have \n\n
+                txt_file.write(header_content)
 
             lines = srt_file.read().splitlines()
             i = 0
@@ -1134,24 +1146,37 @@ def create_timestamped_txt_from_srt(srt_path: str, output_txt_path: str, header_
                 if not line:
                     i += 1
                     continue
+                
                 try:
+                    # Check if the line is a sequence number
                     int(line)
                     if i + 1 < len(lines) and "-->" in lines[i+1]:
                         time_line = lines[i+1].strip()
                         start_time_str = time_line.split(" --> ")[0]
-                        timestamp_prefix = format_srt_time_to_timestamp_prefix(start_time_str)
+                        
+                        # Get the full timestamp, which will be [hh:mm:ss] if hours are present
+                        full_timestamp = format_srt_time_to_timestamp_prefix(start_time_str)
+                        final_timestamp = full_timestamp
+
+                        # If the setting is on, shorten any timestamp that is under the 1-hour mark
+                        if should_shorten and full_timestamp.startswith('[00:'):
+                            final_timestamp = '[' + full_timestamp[4:]  # Strips '[00:' to leave '[mm:ss]'
+
                         i += 2
                         text_block = []
                         while i < len(lines) and lines[i].strip():
                             text_block.append(lines[i].strip())
                             i += 1
+                        
                         if text_block:
                             full_text = " ".join(text_block)
-                            txt_file.write(f"{timestamp_prefix} {full_text}\n")
+                            txt_file.write(f"{final_timestamp} {full_text}\n")
                         continue
                 except ValueError:
+                    # Not a sequence number, so we move on
                     pass
                 i += 1
+                
         logger.info(f"Successfully created timestamped TXT: {output_txt_path}")
         return True
     except FileNotFoundError:
