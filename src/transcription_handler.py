@@ -1097,26 +1097,27 @@ Description: {details.get('description', 'No description available')}
 # alt; shorten at 1000 chars.
 # Description: {textwrap.shorten(details.get('description', 'No description available'), 1000, placeholder="...")}
 
-# Helper function to format SRT time to [mm:ss] (as provided before)
-def format_srt_time_to_mm_ss(time_str: str) -> str:
+# Helper function to format SRT time to either [hh:mm:ss] or [mm:ss]
+def format_srt_time_to_timestamp_prefix(time_str: str) -> str:
     try:
+        # SRT time format is HH:MM:SS,ms
         main_time, _ = time_str.split(',')
         parts = main_time.split(':')
-        if len(parts) == 3:  # HH:MM:SS
-            mm = parts[1]
-            ss = parts[2]
-            return f"[{mm}:{ss}]"
-        elif len(parts) == 2:  # MM:SS
-            mm = parts[0]
-            ss = parts[1]
+        
+        if len(parts) == 3:  # Format includes hours: HH:MM:SS
+            hh, mm, ss = parts[0], parts[1], parts[2]
+            return f"[{hh}:{mm}:{ss}]"
+        elif len(parts) == 2:  # Format is only MM:SS
+            mm, ss = parts[0], parts[1]
             return f"[{mm}:{ss}]"
         else:
+            # Fallback for any other unexpected format
             logger.warning(f"Unexpected time format in SRT: {time_str}")
             return f"[{time_str.split(',')[0]}]"
+            
     except Exception as e:
         logger.error(f"Error formatting SRT time '{time_str}': {e}")
-        return f"[{time_str.split(',')[0]}]"
-
+        return f"[{time_str.split(',')[0]}]"  # Return a basic timestamp as fallback
 
 # Helper function to create timestamped TXT from SRT (as provided before)
 def create_timestamped_txt_from_srt(srt_path: str, output_txt_path: str, header_content: str = "") -> bool:
@@ -1138,7 +1139,7 @@ def create_timestamped_txt_from_srt(srt_path: str, output_txt_path: str, header_
                     if i + 1 < len(lines) and "-->" in lines[i+1]:
                         time_line = lines[i+1].strip()
                         start_time_str = time_line.split(" --> ")[0]
-                        timestamp_prefix = format_srt_time_to_mm_ss(start_time_str)
+                        timestamp_prefix = format_srt_time_to_timestamp_prefix(start_time_str)
                         i += 2
                         text_block = []
                         while i < len(lines) and lines[i].strip():
