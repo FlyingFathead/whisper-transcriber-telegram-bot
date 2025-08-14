@@ -220,7 +220,7 @@ If you just need to see the options and help, type:
 ```
 
 ## Changes
-- v0.1717 - Timestamped output fixed in longer videos
+- v0.1717 - Timestamped output fixed in multi-hour videos
 - v0.1716 - **NEW: Configurable per-domain yt-dlp arguments**
   - Added new `[YTDLPSettings]` config options:
     - `use_special_commands_for_domains = true` (set to `true` to enable)
