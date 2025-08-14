@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1717"
+version_number = "0.1717.1"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -173,7 +173,7 @@ class TranscriberBot:
             "- /help: Get detailed help on how to use this service.\n"
             "- /info: View current settings and status.\n"
             "- /model: Change the transcription model.\n"
-            "- /language: Set the transcription language.\n\n"
+            "- /language (or /lang): Set the transcription language.\n\n"  
             "Let's get started! Send me a link or an audio file to begin."
         )
         await update.message.reply_text(welcome_message, parse_mode='HTML')
@@ -567,7 +567,7 @@ class TranscriberBot:
     {file_upload_info}
     - Use /info to view the current settings, status, and jobs in queue.
     - Use /model to change the transcription model.
-    - Use /language to change the model language in use
+    - Use /language (or /lang) to change the model language in use
     (set language to <code>auto</code> for automatic language detection).
 
     <i>TIP: Setting the language manually to the audio's language may improve accuracy and speed.</i>
@@ -853,7 +853,7 @@ class TranscriberBot:
             f"<b>Current model in use:</b> {current_model}\n"
             f"(change with: /model)\n\n"
             f"<b>Selected transcription language:</b> {current_language}\n"
-            f"(change with /language)\n\n"
+            f"(change with /language or /lang)\n\n"
             f"<b>Bot uptime:</b> {str(uptime)}\n"
             f"<b>Bot started on:</b> {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
             f"<b>Current active GPU status:</b>\n{gpu_status}\n\n"
@@ -879,8 +879,8 @@ class TranscriberBot:
                 self.application.add_handler(CommandHandler('start', self.start_command))                
                 self.application.add_handler(CommandHandler(['help', 'about'], self.help_command))
                 self.application.add_handler(CommandHandler('info', self.info_command))
-                self.application.add_handler(CommandHandler('model', self.model_command))
-                self.application.add_handler(CommandHandler('language', self.set_language_command))
+                self.application.add_handler(CommandHandler('model', self.model_command))                    
+                self.application.add_handler(CommandHandler(['language', 'lang'], self.set_language_command))
 
                 # Add specific message handlers next
                 self.application.add_handler(MessageHandler(filters.AUDIO, self.handle_audio_file))

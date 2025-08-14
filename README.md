@@ -220,6 +220,8 @@ If you just need to see the options and help, type:
 ```
 
 ## Changes
+- v0.1717.1 - Language selection _(small tweak)_
+   - Language can now be shorthand-selected with `/lang` in addition to `/language`
 - v0.1717 - **Timestamp formatting fixes & dynamic hour display**
   - Fixed a bug where `_timestamped.txt` files would incorrectly drop the hour from timestamps (e.g., a timestamp of `1:23:45` would appear as `[23:45]`).
   - Introduced dynamic timestamp formatting, which is on by default. Timestamps for moments under the one-hour mark are now shown in a shortened `[mm:ss]` format. Once a transcription passes the one-hour mark, timestamps automatically switch to the full `[hh:mm:ss]` format within the same file.
