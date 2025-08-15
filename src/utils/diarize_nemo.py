@@ -69,8 +69,6 @@ EXIT_CODE_CTRL_C = 130
 # --- Graceful termination (SIGINT/SIGTERM) ------------------------------------
 _SIG_CAUGHT = False
 
-print("[NOTE/WARNING] This script is EXPERIMENTAL. Do NOT leave bug reports on it unless you're willing to fix them yourself.")
-
 def _graceful_exit(signum, frame):
     # Map common signals to human-friendly names (best-effort, portable)
     name = {getattr(signal, "SIGINT", 2): "SIGINT",
@@ -1060,10 +1058,10 @@ def main(args):
     # elif not args.no_asr:
     #     logging.warning("[PIPELINE] ASR model was provided, but it will be ignored because the clustering-only diarizer (no MSDD) does not support transcription.")
 
-    # Re-create manifest path (safe to do again here)
-    manifest_fp = create_manifest(
-        processed_audio_path, args.num_speakers, args.output_dir, args.workdir, args.allow_outside_workdir
-    )
+    # # Re-create manifest path (safe to do again here)
+    # manifest_fp = create_manifest(
+    #     processed_audio_path, args.num_speakers, args.output_dir, args.workdir, args.allow_outside_workdir
+    # )
 
     # Build a dict that matches NeMo’s expected structure 1:1
     cfg_dict = {
@@ -1135,7 +1133,9 @@ def main(args):
         if not args.no_asr and 'asr_model' in model_paths:
             cfg_dict['diarizer']['asr'] = {'model_path': model_paths['asr_model']}
     elif not args.no_asr:
-        logging.warning("[PIPELINE] ASR model was provided, but it will be ignored because the clustering-only diarizer (no MSDD) does not support transcription.")
+        # logging.warning("[PIPELINE] ASR model was provided, but it will be ignored because the clustering-only diarizer (no MSDD) does not support transcription.")
+        logging.critical("FATAL: Transcription requires MSDD diarizer. Use --msdd-model <model> or add --no-asr.")
+        sys.exit(EXIT_CODE_CLI_ERROR)
 
     # Convert to OmegaConf
     cfg = om.create(cfg_dict)
@@ -1166,6 +1166,7 @@ def main(args):
     # except Exception:
     #     pass
 
+    # --- merge user diarizer config ONCE ---
     if args.diarizer_config:
         try:
             override_cfg = om.load(args.diarizer_config)
@@ -1178,17 +1179,14 @@ def main(args):
     output_str, success = "", False
     try:
         logging.info("[PIPELINE] Starting NeMo diarization/transcription job...")
+
+        # Apply last so user YAML can’t re-enable overlap smoothing by accident
+        _force_no_overlap(cfg)
+
+        # Pick diarizer class once
         DiarizerClass, diarizer_label = _get_diarizer_class(msdd_enabled=not msdd_disabled)
         logging.info(f"[PIPELINE] Using diarizer class: {diarizer_label}")
 
-        if args.diarizer_config:
-            override_cfg = om.load(args.diarizer_config)
-            cfg = om.merge(cfg, override_cfg)
-            logging.info(f"[PIPELINE] Merged diarizer config from {args.diarizer_config}")
-
-        _force_no_overlap(cfg)
-        DiarizerClass, diarizer_label = _get_diarizer_class(msdd_enabled=not msdd_disabled)        
-        
         dm = DiarizerClass(cfg=cfg)
 
         # Some NeMo builds are Lightning modules; .to() may or may not exist—be liberal.
@@ -1346,6 +1344,9 @@ def _assert_transformers_version():
 class CustomHelpFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter): pass
 
 if __name__ == "__main__":
+    # warning
+    print("[NOTE/WARNING] This script is EXPERIMENTAL. Do NOT leave bug reports on it unless you're willing to fix them yourself.", file=sys.stderr)
+
     parser = argparse.ArgumentParser(description=SCRIPT_BANNER, formatter_class=CustomHelpFormatter)
     parser.add_argument("audio_filepath", nargs='?', default=None, help="Path to the audio file to process.")
     parser.add_argument("--workdir", default="./data", help="Root working directory for all runs and artifacts.")
