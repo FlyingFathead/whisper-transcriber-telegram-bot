@@ -60,6 +60,12 @@ COLLAPSE_SIL = 0.25        # collapse to 1 if final silhouette < this
 COLLAPSE_CENT = 0.22       # collapse to 1 if min centroid distance <= this
 MIN_CLUSTER_SIZE = 5       # clusters smaller than this are absorbed
 
+# Changepoint recognition
+CP_ENTER = 0.28         # enter speech-change state if cosine jump >= this
+CP_EXIT  = 0.22         # exit back below this (hysteresis)
+MIN_REGION_SEC = 1.2    # min region length (seconds) after change-point merge
+USE_CHANGEPOINTS = True # default ON
+
 # ---------- Logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -209,6 +215,86 @@ def enforce_min_run(labels: np.ndarray, min_run: int = 3) -> np.ndarray:
             else:
                 y[i:j] = y[i - 1]
         i = j
+    return y
+
+# --- Changepoint recognition helpers ---
+def _regionize_by_changepoints(X_win, ts_win, enter=CP_ENTER, exit=CP_EXIT, min_region_sec=MIN_REGION_SEC):
+    """
+    X_win : (N, d) unit-norm window embeddings
+    ts_win: list[(t0, t1)] for each window
+    returns: regions = list[(start_idx, end_idx_inclusive)], ts_regions = list[(t0, t1)]
+    """
+    X = _unit_norm(np.asarray(X_win, dtype=np.float32))
+    N = len(X)
+    if N == 0:
+        return [], []
+    if N == 1:
+        return [(0, 0)], [ts_win[0]]
+
+    # cosine distance between consecutive windows
+    d = np.maximum(0.0, (cosine_distances(X[:-1], X[1:]).diagonal()))
+    # hysteresis thresholding
+    on = False
+    cuts = [0]
+    for i, val in enumerate(d, start=1):
+        if not on and val >= float(enter):
+            on = True
+            cuts.append(i)
+        elif on and val <= float(exit):
+            on = False
+            cuts.append(i)
+    if cuts[-1] != N:
+        cuts.append(N)
+
+    # build regions from cuts, enforce min duration
+    regions = []
+    ts_regions = []
+    cur_s = cuts[0]
+    for cur_e in cuts[1:]:
+        s, e = cur_s, cur_e - 1
+        # grow region until long enough
+        t0, _ = ts_win[s]
+        _, t1 = ts_win[e]
+        if (t1 - t0) >= float(min_region_sec):
+            regions.append((s, e))
+            ts_regions.append((t0, t1))
+            cur_s = cur_e
+        else:
+            # too short; defer merging with next chunk
+            continue
+    # tail (if left)
+    if cur_s < N:
+        s, e = cur_s, N - 1
+        t0, _ = ts_win[s]
+        _, t1 = ts_win[e]
+        if regions and (t1 - t0) < float(min_region_sec):
+            # absorb into previous region
+            ps, pe = regions[-1]
+            regions[-1] = (ps, e)
+            pt0, _ = ts_regions[-1]
+            ts_regions[-1] = (pt0, t1)
+        else:
+            regions.append((s, e))
+            ts_regions.append((t0, t1))
+
+    # guarantee at least one region
+    if not regions:
+        regions = [(0, N-1)]
+        ts_regions = [(ts_win[0][0], ts_win[-1][1])]
+    return regions, ts_regions
+
+def _mean_embs_by_regions(X_win, regions):
+    if not regions:
+        return np.zeros((0, X_win.shape[1]), dtype=np.float32)
+    means = []
+    for s, e in regions:
+        means.append(X_win[s:e+1].mean(axis=0))
+    return _unit_norm(np.vstack(means).astype(np.float32))
+
+def _expand_region_labels_to_windows(regions, lab_regions, N):
+    y = np.zeros(N, dtype=int)
+    for (s, e), lab in zip(regions, lab_regions):
+        y[s:e+1] = int(lab)
     return y
 
 # ---------- Clustering helpers ----------
@@ -457,11 +543,15 @@ def format_timestamp(seconds):
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     return f"{minutes:02d}:{secs:02d}"
 
-def format_output_text(speaker_transcripts):
-    return "\n".join(
-        f"=== {format_timestamp(seg['start'])} ({seg['speaker']}) ===\n{seg['text']}\n"
-        for seg in speaker_transcripts
-    )
+def format_output_text(speaker_transcripts, include_end=True):
+    lines = []
+    for seg in speaker_transcripts:
+        if include_end:
+            head = f"=== {format_timestamp(seg['start'])}-{format_timestamp(seg['end'])} ({seg['speaker']}) ==="
+        else:
+            head = f"=== {format_timestamp(seg['start'])} ({seg['speaker']}) ==="
+        lines.append(f"{head}\n{seg['text']}\n")
+    return "\n".join(lines)
 
 def _fmt_srt_time(t):
     ms = int(round(t * 1000))
@@ -522,6 +612,7 @@ def main(
     collapse_sil=COLLAPSE_SIL,
     collapse_centroid=COLLAPSE_CENT,
     seed=1337,
+    include_span=True,   # NEW: default show start–end in .txt headers
 ):
     # Resolve device
     dev = resolve_device(device)
@@ -561,11 +652,25 @@ def main(
 
     logging.info("Computing embeddings (%d windows)...", len(segments))
     encoder = VoiceEncoder(device=torch.device(dev))
-    embeddings = get_embeddings(segments, encoder)
+    win_embs = get_embeddings(segments, encoder)
+    X_win = _unit_norm(win_embs)
+
+    # --- CHANGE-POINT REGIONIZATION (default ON) ---
+    if USE_CHANGEPOINTS:
+        regions, ts_regions = _regionize_by_changepoints(
+            X_win, timestamps, enter=CP_ENTER, exit=CP_EXIT, min_region_sec=MIN_REGION_SEC
+        )
+        X_reg = _mean_embs_by_regions(X_win, regions)
+        feat_for_cluster = X_reg
+        logging.info("Regionized %d windows -> %d regions", len(X_win), len(regions))
+    else:
+        regions = [(i, i) for i in range(len(X_win))]
+        ts_regions = timestamps
+        feat_for_cluster = X_win
 
     logging.info("Clustering (method=%s%s)...", method, f", force_n={force_n}" if force_n else "")
-    labels = pick_labels(
-        embeddings,
+    lab_regions = pick_labels(
+        feat_for_cluster,
         method=method,
         min_speakers=min_speakers,
         max_speakers=max_speakers,
@@ -579,9 +684,9 @@ def main(
         min_cluster_size=MIN_CLUSTER_SIZE,
     )
 
-    # Temporal post-processing: smooth, then enforce min-run
+    # Temporal post-processing on REGION labels
+    labels = lab_regions
     if labels.size and smoothing_window and smoothing_window > 1:
-        logging.info("Smoothing labels (window=%d)...", smoothing_window)
         labels = smooth_labels(labels, smoothing_window)
     if labels.size and min_run and min_run > 1:
         labels = enforce_min_run(labels, min_run=min_run)
@@ -589,16 +694,19 @@ def main(
     logging.info("Transcribing with Whisper (%s) on %s...", whisper_model, dev)
     transcript_segments = transcribe_audio(audio_filepath, model_name=whisper_model, language=language, device=dev)
 
-    logging.info("Assigning speaker labels to transcript segments...")
-    speaker_transcripts = assign_speakers_to_transcripts(transcript_segments, labels, timestamps)
+    # Use region timestamps for alignment
+    diar_ts = ts_regions
+    speaker_transcripts = assign_speakers_to_transcripts(transcript_segments, labels, diar_ts)
 
     if merge_consecutive:
         logging.info("Merging consecutive segments by same speaker (max_gap=%.2fs)...", max_gap_merge)
         speaker_transcripts = merge_consecutive_speaker_segments(speaker_transcripts, max_gap=max_gap_merge)
 
-    # Emit
+    # Emit (txt / srt / vtt)
+    txt = format_output_text(speaker_transcripts, include_end=include_span)
+
     if not output_filepath:
-        print(format_output_text(speaker_transcripts))
+        print(txt)
     else:
         low = output_filepath.lower()
         if low.endswith(".srt"):
@@ -607,7 +715,7 @@ def main(
             write_vtt(speaker_transcripts, output_filepath)
         else:
             with open(output_filepath, "w", encoding="utf-8") as f:
-                f.write(format_output_text(speaker_transcripts))
+                f.write(txt)
         logging.info("Saved to %s", output_filepath)
 
 if __name__ == "__main__":
@@ -628,6 +736,14 @@ if __name__ == "__main__":
 
     # VAD + windows
     ap.add_argument("--no-vad", action="store_true", help="Disable WebRTC VAD gating")
+    # span flags (default ON)
+    group = ap.add_mutually_exclusive_group()
+    group.add_argument("--span", dest="span", action="store_true",
+                       help="Include end time in .txt headers (default)")
+    group.add_argument("--no-span", dest="span", action="store_false",
+                       help="Hide end time in .txt headers")
+    ap.set_defaults(span=True)
+
     ap.add_argument("--window", type=float, default=WINDOW_SIZE, help="Window size (sec)")
     ap.add_argument("--hop", type=float, default=HOP_SIZE, help="Hop size (sec)")
     ap.add_argument("--vad-frame-ms", type=int, default=VAD_FRAME_MS, help="VAD frame size (10/20/30 ms)")
@@ -680,6 +796,7 @@ if __name__ == "__main__":
         collapse_sil=args.collapse_sil,
         collapse_centroid=args.collapse_centroid,
         seed=args.seed,
+        include_span=args.span,  # <— default True; can be disabled with --no-span
     )
 
 # # /// ALT: defaults to 1; conservative. 
