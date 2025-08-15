@@ -1443,7 +1443,13 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    if not args.audio_filepath and not args.dry_run: parser.error("the following arguments are required: audio_filepath")
+    # if not args.audio_filepath and not args.dry_run: parser.error("the following arguments are required: audio_filepath")
+
+    if args.audio_filepath is None and not args.dry_run:
+        print(SCRIPT_BANNER, file=sys.stderr)
+        parser.print_usage(sys.stderr)
+        sys.exit(EXIT_CODE_CLI_ERROR)
+
     args.device = (args.device or "").strip()
 
     if not args.output_dir or args.output_dir == parser.get_default("output_dir"):
