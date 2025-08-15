@@ -1,0 +1,30 @@
+diarizer:
+  vad:
+    # flat keys
+    window_length_in_sec: 0.25
+    shift_length_in_sec: 0.25   # must equal window to disable overlap
+    smoothing: "median"
+    overlap: 0.0
+    onset: 0.25
+    offset: 0.25
+    min_duration_on: 0.05
+    min_duration_off: 0.10
+    pad_onset: 0.05
+    pad_offset: 0.05
+    filter_speech_first: true
+    threshold: 0.25
+
+    # some builds read from "parameters"
+    parameters:
+      window_length_in_sec: 0.25
+      shift_length_in_sec: 0.25   # must equal window to disable overlap
+      smoothing: "median"
+      overlap: 0.0
+      onset: 0.25
+      offset: 0.25
+      min_duration_on: 0.05
+      min_duration_off: 0.10
+      pad_onset: 0.05
+      pad_offset: 0.05
+      filter_speech_first: true
+      threshold: 0.25

@@ -1,4 +1,4 @@
-# diarization.py
+# diarization_resemblyzer.py
 # (From: https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/)
 
 import os
@@ -212,7 +212,7 @@ def main(audio_filepath, output_filepath=None):
 if __name__ == "__main__":
     import sys
     if len(sys.argv) < 2:
-        print("Usage: python diarization_script.py path_to_audio_file [output_textfile.txt]")
+        print("Usage: python diarization_resemblyzer.py path_to_audio_file [output_textfile.txt]")
         sys.exit(1)
     audio_filepath = sys.argv[1]
     output_filepath = sys.argv[2] if len(sys.argv) > 2 else None

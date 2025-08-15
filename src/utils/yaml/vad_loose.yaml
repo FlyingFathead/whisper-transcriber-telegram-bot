@@ -1,0 +1,26 @@
+diarizer:
+  vad:
+    parameters:
+      # Keep the crashy path off:
+      overlap: 0.0
+      # Smoothing helps a *ton* and is safe with overlap=0.0
+      smoothing: "median"
+      filter_speech_first: true
+
+      # Slightly bigger windows help on compressed MP3 → WAV
+      window_length_in_sec: 0.20
+      shift_length_in_sec: 0.02
+
+      # Be generous so we don't miss quiet speech
+      onset: 0.25
+      offset: 0.25
+      # Some NeMo branches still check this:
+      threshold: 0.25
+
+      # Don’t require long bursts to count as speech
+      min_duration_on: 0.05
+      min_duration_off: 0.10
+
+      # Small padding on both ends
+      pad_onset: 0.05
+      pad_offset: 0.05

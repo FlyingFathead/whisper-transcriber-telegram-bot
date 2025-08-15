@@ -50,3 +50,9 @@ venv/
 
 # backup files
 *.bak
+
+# Ignore diarization/temp artifacts
+src/utils/data/
+src/utils/data/**
+data/
+data/**
