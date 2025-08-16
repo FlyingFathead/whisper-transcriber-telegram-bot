@@ -13,7 +13,7 @@
 #     * Spectral clustering + silhouette
 # - Stronger separation defaults; optional pitch feature for M/F separation
 # - Diagnostics for guard/silhouette/cluster sizes/centroid separation
-# - Transcribes with Whisper and assigns speakers
+# - Transcribes with Whisper and assigns speakers (splits at diar boundaries)
 # - Outputs .txt / .srt / .vtt
 #
 # Deps (pip):
@@ -32,14 +32,31 @@ from sklearn.metrics import silhouette_score
 from sklearn.mixture import GaussianMixture
 from sklearn.metrics.pairwise import cosine_distances
 from sklearn.cluster import AgglomerativeClustering
+import warnings
+
+# silence known deprecation noise early
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    message=r".*speechbrain\.pretrained.*deprecated.*",
+)
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    message=r".*pkg_resources is deprecated.*",
+)
 
 # --- Optional embedders ---
 HAVE_ECAPA = False
 try:
-    from speechbrain.pretrained import EncoderClassifier
+    from speechbrain.inference import EncoderClassifier  # SpeechBrain ≥ 1.0
     HAVE_ECAPA = True
 except Exception:
-    HAVE_ECAPA = False
+    try:
+        from speechbrain.pretrained import EncoderClassifier  # SpeechBrain < 1.0
+        HAVE_ECAPA = True
+    except Exception:
+        HAVE_ECAPA = False
 
 HAVE_RESEMBLYZER = False
 try:
@@ -71,12 +88,12 @@ MIN_VOICED_RATIO = 0.2
 DEFAULT_DEVICE = "auto"
 
 # Less conservative than before:
-GUARD_Q90 = 0.11           # if 90th pct cosine dist <= this → assume 1 spk; lower value = less likely to drop to 1
+GUARD_Q90 = 0.11           # if 90th pct cosine dist <= this → assume 1 spk
 FLIMSY_SIL = 0.18          # silhouette below this → fallback agglomerative
 FALLBACK_DIST = 0.15       # agglomerative distance threshold (cosine)
-COLLAPSE_MAJ = 0.90        # collapse to 1 if largest cluster >= this fraction
+COLLAPSE_MAJ = 0.90        # collapse to 1 if largest cluster ≥ this fraction
 COLLAPSE_SIL = 0.25        # collapse to 1 if final silhouette < this
-COLLAPSE_CENT = 0.22       # collapse to 1 if min centroid distance <= this
+COLLAPSE_CENT = 0.22       # collapse to 1 if min centroid distance ≤ this
 MIN_CLUSTER_SIZE = 5       # clusters smaller than this are absorbed
 
 # Changepoint recognition
@@ -254,11 +271,10 @@ def smooth_labels(labels, window_size=SMOOTHING_WINDOW_SIZE):
     arr = uniform_filter1d(labels.astype(float), size=int(window_size), mode="nearest")
     return np.round(arr).astype(int)
 
-# --- replace enforce_min_run with a small-N safe version ---
+# --- small-N safe min-run ---
 def enforce_min_run(labels: np.ndarray, min_run: int = 3) -> np.ndarray:
     if labels.size == 0 or min_run <= 1:
         return labels
-    # Only enforce if we have enough labels to form alternating runs
     if labels.size < 2 * min_run:
         return labels
     y = labels.copy()
@@ -367,14 +383,11 @@ def cluster_gmm_bic(embeddings, k_min=1, k_max=12, covariance_type="diag"):
     n = len(X)
     if n <= 1:
         return np.zeros(n, dtype=int)
-
-    # can't have more clusters than points
     k_max = int(min(k_max, n))
     k_min = int(min(max(1, k_min), k_max))
 
-    # Small-N fallback: avoid "always 1 cluster" when regionization yields few points
+    # Small-N fallback
     if n < 8:
-        # If user asked for >=2 speakers, try to honor it
         k = max(2, k_min) if k_max >= 2 else 1
         if k == 1:
             return np.zeros(n, dtype=int)
@@ -384,7 +397,6 @@ def cluster_gmm_bic(embeddings, k_min=1, k_max=12, covariance_type="diag"):
             ac = AgglomerativeClustering(n_clusters=k, affinity="cosine", linkage="average")
         return ac.fit_predict(X)
 
-    # Normal BIC selection
     bics, gmms = [], []
     for k in range(k_min, k_max + 1):
         try:
@@ -513,7 +525,6 @@ def pick_labels(embeddings, method="bic", min_speakers=1, max_speakers=4,
         return labels
 
     # ---- NORMAL MODE (no force_n) ----
-
     # 0) single-speaker guard
     D = cosine_distances(X)
     tri = D[np.triu_indices_from(D, k=1)]
@@ -534,7 +545,7 @@ def pick_labels(embeddings, method="bic", min_speakers=1, max_speakers=4,
 
     _describe_partition(X, labels, prefix="after primary")
 
-    # 2) flimsy? try bounded Agglomerative(K) — NOT distance_threshold
+    # 2) flimsy? try bounded Agglomerative(K)
     if len(np.unique(labels)) > 1:
         try:
             sil0 = float(silhouette_score(X, labels))
@@ -573,41 +584,136 @@ def pick_labels(embeddings, method="bic", min_speakers=1, max_speakers=4,
 
 # ---------- Transcription ----------
 def transcribe_audio(filepath, model_name=DEFAULT_WHISPER_MODEL, language=None, device="cpu"):
+    # NOTE: we do not force word_timestamps=True to keep compatibility with stock whisper.
     model = whisper.load_model(model_name, device=device)
     result = model.transcribe(filepath, language=language)
     return result.get("segments", [])
 
-# ---------- Alignment + formatting ----------
-def assign_speakers_to_transcripts(transcript_segments, diar_labels, diar_timestamps):
+# ---------- Assignment helpers (reduce leakage) ----------
+def _label_at_time(t, diar_ts, diar_labels):
+    # prefer containing interval; fallback to nearest-center
+    for i, (d0, d1) in enumerate(diar_ts):
+        if d0 <= t <= d1:
+            return int(diar_labels[i])
+    if not diar_ts:
+        return 0
+    centers = [0.5 * (d0 + d1) for (d0, d1) in diar_ts]
+    j = int(np.argmin([abs(c - t) for c in centers]))
+    return int(diar_labels[j])
+
+def _segment_cutpoints_within(start, end, diar_ts, diar_labels):
+    # boundaries where labels change: use start time of the new window
+    cuts = []
+    for i in range(1, len(diar_labels)):
+        if diar_labels[i] != diar_labels[i-1]:
+            t = diar_ts[i][0]
+            if start < t < end:
+                cuts.append(t)
+    return [start] + cuts + [end]
+
+def _split_text_proportionally(text, durations):
+    text = (text or "").strip()
+    if not text or len(durations) == 1:
+        return [text]
+    total = float(sum(max(1e-6, d) for d in durations))
+    L = len(text)
+    # proposed cut indices
+    cuts = []
+    acc = 0.0
+    for d in durations[:-1]:
+        acc += d
+        idx = int(round((acc / total) * L))
+        # snap to nearby whitespace to avoid mid-word cuts
+        lo = max(0, idx - 10); hi = min(L - 1, idx + 10)
+        window = text[lo:hi]
+        offs = None
+        for k in range(len(window)):
+            if window[k].isspace():
+                offs = k; break
+        if offs is not None:
+            idx = lo + offs
+        cuts.append(idx)
+    pieces = []
+    prev = 0
+    for c in cuts + [L]:
+        pieces.append(text[prev:c].strip())
+        prev = c
+    return pieces
+
+def _words_to_text(words):
+    # words may already contain spaces; keep as is
+    return "".join(w.get("word", "") for w in words).strip()
+
+def assign_speakers_to_transcripts(transcript_segments, diar_labels, diar_timestamps, split_at_diar=True):
+    """
+    If split_at_diar=True, each Whisper segment is split at diarization boundaries inside it.
+    If the segment contains 'words', group words into subspans; else slice text proportionally.
+    """
     if len(diar_labels) != len(diar_timestamps):
         if len(diar_labels) == 0 or len(diar_timestamps) == 0:
             out = []
             for seg in transcript_segments:
-                out.append(
-                    {
-                        "start": float(seg.get("start", 0.0)),
-                        "end": float(seg.get("end", 0.0)),
-                        "speaker": "Speaker 1",
-                        "text": (seg.get("text") or "").strip(),
-                    }
-                )
+                out.append({
+                    "start": float(seg.get("start", 0.0)),
+                    "end": float(seg.get("end", 0.0)),
+                    "speaker": "Speaker 1",
+                    "text": (seg.get("text") or "").strip(),
+                })
             return out
         raise ValueError("Mismatch between diarization labels and timestamps.")
 
-    speaker_transcripts = []
+    out = []
     for seg in transcript_segments:
-        start = float(seg.get("start", 0.0))
-        end = float(seg.get("end", start))
+        s0 = float(seg.get("start", 0.0))
+        s1 = float(seg.get("end", s0))
         text = (seg.get("text") or "").strip()
-        counts = {}
-        for idx, (d0, d1) in enumerate(diar_timestamps):
-            overlap = max(0.0, min(end, d1) - max(start, d0))
-            if overlap > 0.0:
-                label = f"Speaker {int(diar_labels[idx]) + 1}"
-                counts[label] = counts.get(label, 0.0) + overlap
-        spk = max(counts, key=counts.get) if counts else "Speaker 1"
-        speaker_transcripts.append({"start": start, "end": end, "speaker": spk, "text": text})
-    return speaker_transcripts
+
+        if not split_at_diar:
+            # original majority-overlap assignment
+            counts = {}
+            for idx, (d0, d1) in enumerate(diar_timestamps):
+                overlap = max(0.0, min(s1, d1) - max(s0, d0))
+                if overlap > 0.0:
+                    label = f"Speaker {int(diar_labels[idx]) + 1}"
+                    counts[label] = counts.get(label, 0.0) + overlap
+            spk = max(counts, key=counts.get) if counts else "Speaker 1"
+            out.append({"start": s0, "end": s1, "speaker": spk, "text": text})
+            continue
+
+        # Split at diar boundaries inside [s0, s1]
+        cuts = _segment_cutpoints_within(s0, s1, diar_timestamps, diar_labels)
+        spans = list(zip(cuts[:-1], cuts[1:]))
+        durations = [e - b for (b, e) in spans]
+
+        # word-aware split if available
+        words = seg.get("words")
+        if isinstance(words, list) and words:
+            # bucket words by span
+            grouped = [[] for _ in spans]
+            for w in words:
+                w0, w1 = float(w.get("start", s0)), float(w.get("end", s0))
+                mid = 0.5 * (w0 + w1)
+                # find span index
+                k = 0
+                while k < len(spans) and not (spans[k][0] <= mid <= spans[k][1]):
+                    k += 1
+                if k >= len(spans):
+                    # fallback: nearest span by center
+                    centers = [0.5 * (a + b) for (a, b) in spans]
+                    k = int(np.argmin([abs(c - mid) for c in centers]))
+                grouped[k].append(w)
+            texts = [_words_to_text(g) for g in grouped]
+        else:
+            texts = _split_text_proportionally(text, durations)
+
+        # emit pieces with labels at midpoints
+        for (b, e), txt in zip(spans, texts):
+            mid = 0.5 * (b + e)
+            lab = _label_at_time(mid, diar_timestamps, diar_labels)
+            spk = f"Speaker {lab + 1}"
+            out.append({"start": b, "end": e, "speaker": spk, "text": txt})
+
+    return out
 
 def merge_consecutive_speaker_segments(speaker_transcripts, max_gap=0.2):
     if not speaker_transcripts:
@@ -616,7 +722,12 @@ def merge_consecutive_speaker_segments(speaker_transcripts, max_gap=0.2):
     cur = speaker_transcripts[0].copy()
     for seg in speaker_transcripts[1:]:
         if seg["speaker"] == cur["speaker"] and (seg["start"] - cur["end"]) <= float(max_gap):
-            cur["text"] = (cur["text"] + " " + seg["text"]).strip()
+            # merge text only if both have text to avoid swallowing empty slices
+            if seg["text"]:
+                if cur["text"]:
+                    cur["text"] = (cur["text"] + " " + seg["text"]).strip()
+                else:
+                    cur["text"] = seg["text"]
             cur["end"] = seg["end"]
         else:
             merged.append(cur)
@@ -707,6 +818,10 @@ def main(
     no_collapse=True,      # default: DO NOT collapse to 1
     no_guard=False,        # allow disabling the "single-speaker guard"
     use_pitch=False,       # optional pitch feature
+    cp_enter=CP_ENTER,
+    cp_exit=CP_EXIT,
+    min_region_sec=MIN_REGION_SEC,
+    split_at_diar=True,
 ):
     # Resolve device
     dev = resolve_device(device)
@@ -777,7 +892,7 @@ def main(
     # --- CHANGE-POINT REGIONIZATION ---
     if use_cp:
         regions, ts_regions = _regionize_by_changepoints(
-            X_win, timestamps, enter=CP_ENTER, exit=CP_EXIT, min_region_sec=MIN_REGION_SEC
+            X_win, timestamps, enter=cp_enter, exit=cp_exit, min_region_sec=min_region_sec
         )
         X_reg = _mean_embs_by_regions(X_win, regions)
         # average pitch over region, if used
@@ -802,20 +917,14 @@ def main(
         else:
             feat_for_cluster = X_win
 
-    # --- after computing regions / X_reg / feat_for_cluster in the CP branch ---
-    # If user demands multi-speaker but CP produced <2 regions, fall back to window-level features
-    if force_n and int(force_n) >= 2 and feat_for_cluster.shape[0] < 2:
-        logging.warning(
-            "CP produced %d region(s); falling back to window-level clustering.",
-            feat_for_cluster.shape[0]
-        )
-        regions = [(i, i) for i in range(len(X_win))]
-        ts_regions = timestamps
-        feat_for_cluster = (
-            np.hstack([X_win, pitch_win]) if (use_pitch and pitch_win is not None) else X_win
-        )
+    # --- If user demands multi-speaker but CP produced weak evidence, fall back ---
+    def _min_prop(lbls):
+        if getattr(lbls, "size", 0) == 0:
+            return 1.0
+        _, c = np.unique(lbls, return_counts=True)
+        return float(c.min()) / float(lbls.size)
 
-    logging.info("Clustering (method=%s%s)...", method, f", force_n={force_n}" if force_n else "")
+    too_few_regions = (use_cp and force_n and feat_for_cluster.shape[0] < int(force_n) * 3)
     lab_regions = pick_labels(
         feat_for_cluster,
         method=method,
@@ -832,9 +941,41 @@ def main(
         no_collapse=no_collapse,
         no_guard=no_guard,
     )
+    too_imbalanced = (use_cp and force_n and len(np.unique(lab_regions)) >= 2 and _min_prop(lab_regions) < 0.10)
 
-    # Temporal post-processing on REGION labels
-    labels = lab_regions
+    if too_few_regions or too_imbalanced:
+        logging.warning(
+            "CP produced weak evidence (regions=%d, min_prop=%.3f). Falling back to window-level clustering.",
+            feat_for_cluster.shape[0], _min_prop(lab_regions)
+        )
+        regions = [(i, i) for i in range(len(X_win))]
+        ts_regions = timestamps
+        feat_for_cluster = (np.hstack([X_win, pitch_win]) if (use_pitch and pitch_win is not None) else X_win)
+        lab_regions = pick_labels(
+            feat_for_cluster,
+            method=method,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
+            force_n=force_n,
+            fallback_dist=fallback_dist,
+            flimsy_sil=flimsy_sil,
+            guard_q90=single_guard,
+            collapse_majority=collapse_majority,
+            collapse_sil=collapse_sil,
+            collapse_centroid=collapse_centroid,
+            min_cluster_size=MIN_CLUSTER_SIZE,
+            no_collapse=no_collapse,
+            no_guard=no_guard,
+        )
+
+    # Expand region labels back to window level
+    labels = _expand_region_labels_to_windows(regions, lab_regions, len(X_win))
+    logging.info("label histogram (window level): %s",
+                 np.bincount(labels).tolist() if labels.size else [])
+
+    diar_ts = timestamps  # align at window-level, not region-level
+
+    # Temporal postproc on window labels
     if labels.size and smoothing_window and smoothing_window > 1:
         labels = smooth_labels(labels, smoothing_window)
     if labels.size and min_run and min_run > 1:
@@ -843,8 +984,9 @@ def main(
     logging.info("Transcribing with Whisper (%s) on %s...", whisper_model, dev)
     transcript_segments = transcribe_audio(audio_filepath, model_name=whisper_model, language=language, device=dev)
 
-    diar_ts = ts_regions
-    speaker_transcripts = assign_speakers_to_transcripts(transcript_segments, labels, diar_ts)
+    speaker_transcripts = assign_speakers_to_transcripts(
+        transcript_segments, labels, diar_ts, split_at_diar=split_at_diar
+    )
 
     if merge_consecutive:
         logging.info("Merging consecutive segments by same speaker (max_gap=%.2fs)...", max_gap_merge)
@@ -877,7 +1019,10 @@ if __name__ == "__main__":
     # simple knobs
     ap.add_argument("--device", default=DEFAULT_DEVICE, help="cpu | cuda | cuda:N | auto (default)")
     ap.add_argument("--whisper-model", default=DEFAULT_WHISPER_MODEL, help="Whisper model name")
-    ap.add_argument("--language", default=None, help="Force language for Whisper (e.g., fi, en)")
+    
+    ap.add_argument("--language", "--lang", dest="language", default=None,
+                    help="Force language for Whisper (e.g., fi, en)")
+
     ap.add_argument("--force-n", type=int, default=None, help="Force exact number of speakers")
 
     # clustering
@@ -911,6 +1056,14 @@ if __name__ == "__main__":
     ap.add_argument("--no-collapse", action="store_true", help="Disable final collapse-to-one heuristic (default on)")
     ap.add_argument("--no-guard", action="store_true", help="Disable single-speaker guard")
     ap.add_argument("--pitch", action="store_true", help="Append z-scored log-F0 to features")
+    ap.add_argument("--no-split", dest="split", action="store_false",
+                    help="Do not split Whisper segments at diarization boundaries")
+    ap.set_defaults(split=True)
+
+    # CP thresholds (new)
+    ap.add_argument("--cp-enter", type=float, default=CP_ENTER, help="Changepoint enter threshold")
+    ap.add_argument("--cp-exit",  type=float, default=CP_EXIT,  help="Changepoint exit threshold")
+    ap.add_argument("--min-region-sec", type=float, default=MIN_REGION_SEC, help="Minimum region length (sec)")
 
     # thresholds
     ap.add_argument("--single-guard", type=float, default=GUARD_Q90, help="Guard: assume 1 spk if q90 dist <= this")
@@ -960,7 +1113,12 @@ if __name__ == "__main__":
         no_collapse=args.no_collapse,
         no_guard=args.no_guard,
         use_pitch=args.pitch,
+        cp_enter=args.cp_enter,
+        cp_exit=args.cp_exit,
+        min_region_sec=args.min_region_sec,
+        split_at_diar=args.split,
     )
+
 
 # # /// ALT: defaults to 1; conservative. 
 # # /// GMM+BIC => sanity-checked split silhouette => min cluster size => centroid separateion
