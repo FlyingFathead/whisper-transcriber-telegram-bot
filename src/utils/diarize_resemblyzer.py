@@ -21,18 +21,20 @@
 #   speechbrain  (recommended; provides ECAPA-TDNN embedder)
 #   resemblyzer (optional if using --embedder resemblyzer or as fallback)
 
-import os, argparse, warnings, logging
+import argparse
+import logging
+import warnings
+
+import librosa
 import numpy as np
 import torch
-import librosa
 import whisper
-from spectralcluster import SpectralClusterer, RefinementOptions
 from scipy.ndimage import uniform_filter1d
-from sklearn.metrics import silhouette_score
-from sklearn.mixture import GaussianMixture
-from sklearn.metrics.pairwise import cosine_distances
+from spectralcluster import RefinementOptions, SpectralClusterer
 from sklearn.cluster import AgglomerativeClustering
-import warnings
+from sklearn.metrics import silhouette_score
+from sklearn.metrics.pairwise import cosine_distances
+from sklearn.mixture import GaussianMixture
 
 # silence known deprecation noise early
 warnings.filterwarnings(
@@ -45,6 +47,8 @@ warnings.filterwarnings(
     category=UserWarning,
     message=r".*pkg_resources is deprecated.*",
 )
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 # --- Optional embedders ---
 HAVE_ECAPA = False
@@ -68,18 +72,16 @@ except Exception:
 # Try webrtcvad; fall back to energy gate if missing.
 try:
     import webrtcvad
+
     HAVE_WEBRTCVAD = True
 except Exception:
     webrtcvad = None
     HAVE_WEBRTCVAD = False
 
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=FutureWarning)
-
 # ---------- Defaults (tuned to avoid collapsing to 1 spk) ----------
 MERGE_CONSECUTIVE_SEGMENTS = True
-WINDOW_SIZE = 0.8          # seconds (use >1.0 in faster interactions)
-HOP_SIZE = 0.4             # seconds (0.75 default, use 0.3 for better turn detection)
+WINDOW_SIZE = 0.8  # seconds (use >1.0 in faster interactions)
+HOP_SIZE = 0.4  # seconds (0.75 default, use 0.3 for better turn detection)
 SMOOTHING_WINDOW_SIZE = 7  # frames
 DEFAULT_WHISPER_MODEL = "turbo"
 VAD_FRAME_MS = 30
@@ -87,22 +89,28 @@ VAD_AGGR = 2
 MIN_VOICED_RATIO = 0.2
 DEFAULT_DEVICE = "auto"
 
-# Less conservative than before:
-GUARD_Q90 = 0.11           # if 90th pct cosine dist <= this → assume 1 spk
-FLIMSY_SIL = 0.18          # silhouette below this → fallback agglomerative
-FALLBACK_DIST = 0.15       # agglomerative distance threshold (cosine)
-COLLAPSE_MAJ = 0.90        # collapse to 1 if largest cluster ≥ this fraction
-COLLAPSE_SIL = 0.25        # collapse to 1 if final silhouette < this
-COLLAPSE_CENT = 0.22       # collapse to 1 if min centroid distance ≤ this
-MIN_CLUSTER_SIZE = 5       # clusters smaller than this are absorbed
+# Less conservative:
+GUARD_Q90 = 0.11  # if 90th pct cosine dist <= this → assume 1 spk
+FLIMSY_SIL = 0.18  # silhouette below this → fallback agglomerative
+FALLBACK_DIST = 0.15  # (kept for API; not used directly)
+COLLAPSE_MAJ = 0.90  # collapse to 1 if largest cluster ≥ this fraction
+COLLAPSE_SIL = 0.25  # collapse to 1 if final silhouette < this
+COLLAPSE_CENT = 0.22  # collapse to 1 if min centroid distance ≤ this
+MIN_CLUSTER_SIZE = 5  # clusters smaller than this are absorbed
 
 # Changepoint recognition
 CP_ENTER = 0.28
-CP_EXIT  = 0.22
+CP_EXIT = 0.22
 MIN_REGION_SEC = 1.2
+
+# Rescue acceptance thresholds (when primary method returns 1 cluster)
+RESCUE_MIN_SIL = 0.08
+RESCUE_MIN_CENT = 0.35
+RESCUE_MIN_PROP = 0.10
 
 # ---------- Logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 
 # ---------- Device helpers ----------
 def resolve_device(arg: str) -> str:
@@ -127,6 +135,7 @@ def resolve_device(arg: str) -> str:
         return "cpu"
     raise ValueError(f"Unknown device spec: {arg}")
 
+
 # ---------- Audio utils ----------
 def load_audio(filepath, target_sr=16000):
     audio, sr = librosa.load(filepath, sr=target_sr, mono=True)
@@ -134,6 +143,7 @@ def load_audio(filepath, target_sr=16000):
         raise ValueError("Loaded empty audio.")
     audio = np.asarray(audio, dtype=np.float32)
     return np.clip(audio, -1.0, 1.0), sr
+
 
 def segment_audio(audio, sr, window_size=WINDOW_SIZE, hop_size=HOP_SIZE):
     win = int(window_size * sr)
@@ -156,6 +166,7 @@ def segment_audio(audio, sr, window_size=WINDOW_SIZE, hop_size=HOP_SIZE):
         timestamps.append((start / sr, end / sr))
     return segments, timestamps
 
+
 def _vad_mask_webrtc(audio, sr, frame_ms=VAD_FRAME_MS, aggressiveness=VAD_AGGR):
     vad = webrtcvad.Vad(int(aggressiveness))
     frame = int(sr * frame_ms / 1000)
@@ -166,11 +177,12 @@ def _vad_mask_webrtc(audio, sr, frame_ms=VAD_FRAME_MS, aggressiveness=VAD_AGGR):
     voiced = []
     step = frame * 2  # bytes
     for i in range(0, len(pcm16), step):
-        chunk = pcm16[i: i + step]
+        chunk = pcm16[i : i + step]
         if len(chunk) < step:
             chunk = chunk + b"\x00" * (step - len(chunk))
         voiced.append(bool(vad.is_speech(chunk, sr)))
     return np.repeat(np.array(voiced, dtype=bool), frame)[: len(audio)]
+
 
 def _vad_mask_energy(audio, sr, frame_ms=VAD_FRAME_MS, thresh_db=-45.0):
     frame = int(sr * frame_ms / 1000)
@@ -183,11 +195,13 @@ def _vad_mask_energy(audio, sr, frame_ms=VAD_FRAME_MS, thresh_db=-45.0):
     voiced = db > float(thresh_db)
     return np.repeat(voiced, frame)[: len(audio)]
 
+
 def vad_mask(audio, sr, frame_ms=VAD_FRAME_MS, aggressiveness=VAD_AGGR):
     if HAVE_WEBRTCVAD:
         return _vad_mask_webrtc(audio, sr, frame_ms, aggressiveness)
     logging.warning("webrtcvad not found; using energy gate fallback.")
     return _vad_mask_energy(audio, sr, frame_ms)
+
 
 def segment_audio_with_vad(
     audio,
@@ -212,11 +226,13 @@ def segment_audio_with_vad(
             kept_timestamps.append((t0, t1))
     return kept_segments, kept_timestamps
 
+
 # ---------- Embeddings ----------
 def _unit_norm(X: np.ndarray) -> np.ndarray:
     X = np.asarray(X, dtype=np.float32)
     n = np.linalg.norm(X, axis=1, keepdims=True) + 1e-12
     return X / n
+
 
 def get_embeddings_resemblyzer(segments, encoder: "VoiceEncoder"):
     if not segments:
@@ -226,6 +242,7 @@ def get_embeddings_resemblyzer(segments, encoder: "VoiceEncoder"):
         emb = encoder.embed_utterance(seg)
         embs.append(emb.astype(np.float32))
     return np.vstack(embs)
+
 
 def get_embeddings_ecapa(segments, sb_enc: "EncoderClassifier", dev: str):
     if not segments:
@@ -237,6 +254,7 @@ def get_embeddings_ecapa(segments, sb_enc: "EncoderClassifier", dev: str):
             e = sb_enc.encode_batch(wav).squeeze().detach().cpu().numpy()
         embs.append(e.astype(np.float32))
     return np.vstack(embs)
+
 
 # ---------- Pitch feature (optional: helps M/F separation) ----------
 def _median_logf0(seg, sr):
@@ -251,6 +269,7 @@ def _median_logf0(seg, sr):
     except Exception:
         return np.nan
 
+
 def compute_pitch_feature_per_window(segments, sr):
     if not segments:
         return np.zeros((0,), dtype=np.float32)
@@ -264,12 +283,14 @@ def compute_pitch_feature_per_window(segments, sr):
         return z.astype(np.float32)
     return np.zeros_like(vals, dtype=np.float32)
 
+
 # ---------- Label smoothing ----------
 def smooth_labels(labels, window_size=SMOOTHING_WINDOW_SIZE):
     if window_size is None or window_size <= 1 or labels.size == 0:
         return labels.astype(int)
     arr = uniform_filter1d(labels.astype(float), size=int(window_size), mode="nearest")
     return np.round(arr).astype(int)
+
 
 # --- small-N safe min-run ---
 def enforce_min_run(labels: np.ndarray, min_run: int = 3) -> np.ndarray:
@@ -291,6 +312,7 @@ def enforce_min_run(labels: np.ndarray, min_run: int = 3) -> np.ndarray:
         i = j
     return y
 
+
 # --- Changepoint recognition helpers ---
 def _regionize_by_changepoints(X_win, ts_win, enter=CP_ENTER, exit=CP_EXIT, min_region_sec=MIN_REGION_SEC):
     X = _unit_norm(np.asarray(X_win, dtype=np.float32))
@@ -304,9 +326,11 @@ def _regionize_by_changepoints(X_win, ts_win, enter=CP_ENTER, exit=CP_EXIT, min_
     cuts = [0]
     for i, val in enumerate(d, start=1):
         if not on and val >= float(enter):
-            on = True; cuts.append(i)
+            on = True
+            cuts.append(i)
         elif on and val <= float(exit):
-            on = False; cuts.append(i)
+            on = False
+            cuts.append(i)
     if cuts[-1] != N:
         cuts.append(N)
     regions, ts_regions = [], []
@@ -316,34 +340,77 @@ def _regionize_by_changepoints(X_win, ts_win, enter=CP_ENTER, exit=CP_EXIT, min_
         t0, _ = ts_win[s]
         _, t1 = ts_win[e]
         if (t1 - t0) >= float(min_region_sec):
-            regions.append((s, e)); ts_regions.append((t0, t1)); cur_s = cur_e
+            regions.append((s, e))
+            ts_regions.append((t0, t1))
+            cur_s = cur_e
     if cur_s < N:
         s, e = cur_s, N - 1
-        t0, _ = ts_win[s]; _, t1 = ts_win[e]
+        t0, _ = ts_win[s]
+        _, t1 = ts_win[e]
         if regions and (t1 - t0) < float(min_region_sec):
-            ps, pe = regions[-1]; regions[-1] = (ps, e)
-            pt0, _ = ts_regions[-1]; ts_regions[-1] = (pt0, t1)
+            ps, pe = regions[-1]
+            regions[-1] = (ps, e)
+            pt0, _ = ts_regions[-1]
+            ts_regions[-1] = (pt0, t1)
         else:
-            regions.append((s, e)); ts_regions.append((t0, t1))
+            regions.append((s, e))
+            ts_regions.append((t0, t1))
     if not regions:
-        regions = [(0, N - 1)]; ts_regions = [(ts_win[0][0], ts_win[-1][1])]
+        regions = [(0, N - 1)]
+        ts_regions = [(ts_win[0][0], ts_win[-1][1])]
     return regions, ts_regions
+
 
 def _mean_embs_by_regions(X_win, regions):
     if not regions:
         return np.zeros((0, X_win.shape[1]), dtype=np.float32)
     means = []
     for s, e in regions:
-        means.append(X_win[s:e+1].mean(axis=0))
+        means.append(X_win[s : e + 1].mean(axis=0))
     return _unit_norm(np.vstack(means).astype(np.float32))
+
 
 def _expand_region_labels_to_windows(regions, lab_regions, N):
     y = np.zeros(N, dtype=int)
     for (s, e), lab in zip(regions, lab_regions):
-        y[s:e+1] = int(lab)
+        y[s : e + 1] = int(lab)
     return y
 
+
 # ---------- Clustering helpers ----------
+def _silhouette_safe(X, labels):
+    try:
+        if len(np.unique(labels)) < 2:
+            return -1.0
+        return float(silhouette_score(X, labels))
+    except Exception:
+        return -1.0
+
+
+def _centroids(X, labels):
+    labs = np.unique(labels)
+    C = []
+    for l in labs:
+        C.append(X[labels == l].mean(axis=0))
+    C = _unit_norm(np.vstack(C))
+    return labs, C
+
+
+def _min_centroid_dist(X, labels):
+    labs, C = _centroids(X, labels)
+    if len(C) < 2:
+        return 0.0
+    D = cosine_distances(C)
+    return float(D[np.triu_indices_from(D, k=1)].min())
+
+
+def _min_prop(labels):
+    if getattr(labels, "size", 0) == 0:
+        return 1.0
+    _, c = np.unique(labels, return_counts=True)
+    return float(c.min()) / float(labels.size)
+
+
 def single_speaker_guard(embeddings, guard_q90=GUARD_Q90):
     X = _unit_norm(np.asarray(embeddings, dtype=np.float32))
     n = len(X)
@@ -355,6 +422,7 @@ def single_speaker_guard(embeddings, guard_q90=GUARD_Q90):
         return True
     q90 = float(np.quantile(tri, 0.90))
     return q90 <= float(guard_q90)
+
 
 def estimate_num_speakers_silhouette(embeddings, min_speakers=1, max_speakers=10):
     X = _unit_norm(np.asarray(embeddings, dtype=np.float32))
@@ -369,14 +437,12 @@ def estimate_num_speakers_silhouette(embeddings, min_speakers=1, max_speakers=10
         labels = clusterer.predict(X)
         if len(np.unique(labels)) < 2:
             continue
-        try:
-            score = float(silhouette_score(X, labels))
-        except Exception:
-            continue
+        score = _silhouette_safe(X, labels)
         if score > best_score:
             best_score = score
             best_labels = labels
     return best_labels
+
 
 def cluster_gmm_bic(embeddings, k_min=1, k_max=12, covariance_type="diag"):
     X = _unit_norm(np.asarray(embeddings, dtype=np.float32))
@@ -402,7 +468,8 @@ def cluster_gmm_bic(embeddings, k_min=1, k_max=12, covariance_type="diag"):
         try:
             gmm = GaussianMixture(n_components=k, covariance_type=covariance_type, n_init=2, random_state=0)
             gmm.fit(X)
-            bics.append(gmm.bic(X)); gmms.append(gmm)
+            bics.append(gmm.bic(X))
+            gmms.append(gmm)
         except Exception:
             continue
     if not bics:
@@ -410,71 +477,60 @@ def cluster_gmm_bic(embeddings, k_min=1, k_max=12, covariance_type="diag"):
     best = int(np.argmin(bics))
     return gmms[best].predict(X)
 
-def _centroids(X, labels):
-    labs = np.unique(labels)
-    C = []
-    for l in labs:
-        C.append(X[labels == l].mean(axis=0))
-    C = _unit_norm(np.vstack(C))
-    return labs, C
-
-def _absorb_tiny_clusters(X, labels, min_cluster_size=MIN_CLUSTER_SIZE):
-    labs, C = _centroids(X, labels)
-    sizes = {l: int((labels == l).sum()) for l in labs}
-    big = [l for l in labs if sizes[l] >= min_cluster_size]
-    tiny = [l for l in labs if sizes[l] <  min_cluster_size]
-    if not tiny or not big:
-        return labels
-    C_big = _unit_norm(np.vstack([C[list(labs).index(l)] for l in big]))
-    new = labels.copy()
-    for t in tiny:
-        idx = np.where(labels == t)[0]
-        ct = _unit_norm(C[list(labs).index(t)][None, :])
-        d = cosine_distances(ct, C_big)[0]
-        target = big[int(np.argmin(d))]
-        new[idx] = target
-    uniq = np.unique(new)
-    remap = {l:i for i,l in enumerate(uniq)}
-    return np.array([remap[l] for l in new], dtype=int)
-
-def _collapse_to_one(X, labels,
-                     collapse_majority=COLLAPSE_MAJ,
-                     collapse_sil=COLLAPSE_SIL,
-                     collapse_centroid=COLLAPSE_CENT):
-    n = len(labels)
-    if n == 0 or len(np.unique(labels)) <= 1:
-        return np.zeros(n, dtype=int)
-    _, counts = np.unique(labels, return_counts=True)
-    if (counts.max() / float(n)) >= float(collapse_majority):
-        return np.zeros(n, dtype=int)
-    try:
-        sil = float(silhouette_score(X, labels))
-    except Exception:
-        sil = -1.0
-    if sil < float(collapse_sil):
-        return np.zeros(n, dtype=int)
-    labs, C = _centroids(X, labels)
-    if len(C) >= 2:
-        D = cosine_distances(C)
-        dm = D[np.triu_indices_from(D, k=1)].min()
-        if dm <= float(collapse_centroid):
-            return np.zeros(n, dtype=int)
-    return None
 
 def _describe_partition(X, labels, prefix=""):
     ncl = len(np.unique(labels))
-    try:
-        sil = float(silhouette_score(X, labels)) if ncl > 1 else -1.0
-    except Exception:
-        sil = -1.0
+    sil = _silhouette_safe(X, labels) if ncl > 1 else -1.0
     msg = f"{prefix} clusters={ncl}, silhouette={sil:.3f}"
     if ncl > 1:
         _, counts = np.unique(labels, return_counts=True)
-        labs, C = _centroids(X, labels)
-        D = cosine_distances(C)
-        dm = D[np.triu_indices_from(D, k=1)].min()
+        dm = _min_centroid_dist(X, labels)
         msg += f", sizes={list(counts)}, min_centroid_dist={dm:.3f}"
     logging.info(msg)
+
+
+def _try_agglomerative_k(X, k):
+    try:
+        ac = AgglomerativeClustering(n_clusters=k, metric="cosine", linkage="average")
+    except TypeError:
+        ac = AgglomerativeClustering(n_clusters=k, affinity="cosine", linkage="average")
+    # tiny jitter helps break ties
+    Xj = (X + 1e-4 * np.random.randn(*X.shape)).astype(np.float32)
+    return ac.fit_predict(Xj)
+
+
+def _rescue_multicluster(X, min_k=2, max_k=4,
+                         min_sil=RESCUE_MIN_SIL, min_cent=RESCUE_MIN_CENT, min_prop=RESCUE_MIN_PROP):
+    """Try spectral + agglomerative across k in [min_k, max_k].
+    Accept only if silhouette, centroid distance, and min cluster proportion are all reasonable.
+    """
+    best = None
+    best_s = -1.0
+    X = _unit_norm(X)
+    ref_opts = RefinementOptions(p_percentile=0.90, gaussian_blur_sigma=1)
+    for k in range(int(min_k), int(max_k) + 1):
+        # spectral
+        try:
+            sp = SpectralClusterer(min_clusters=k, max_clusters=k, refinement_options=ref_opts).predict(X)
+            s_sp = _silhouette_safe(X, sp)
+            c_sp = _min_centroid_dist(X, sp)
+            p_sp = _min_prop(sp)
+            if s_sp >= min_sil and c_sp >= min_cent and p_sp >= min_prop and s_sp > best_s:
+                best, best_s = sp, s_sp
+        except Exception:
+            pass
+        # agglomerative
+        try:
+            ag = _try_agglomerative_k(X, k)
+            s_ag = _silhouette_safe(X, ag)
+            c_ag = _min_centroid_dist(X, ag)
+            p_ag = _min_prop(ag)
+            if s_ag >= min_sil and c_ag >= min_cent and p_ag >= min_prop and s_ag > best_s:
+                best, best_s = ag, s_ag
+        except Exception:
+            pass
+    return best
+
 
 def pick_labels(embeddings, method="bic", min_speakers=1, max_speakers=4,
                 force_n=None, fallback_dist=FALLBACK_DIST, flimsy_sil=FLIMSY_SIL,
@@ -487,23 +543,21 @@ def pick_labels(embeddings, method="bic", min_speakers=1, max_speakers=4,
     """
     X = _unit_norm(np.asarray(embeddings, dtype=np.float32))
     n = len(X)
-    k_req = int(max(1, force_n))
-    k = int(min(k_req, max_speakers, n))
-    if k < k_req:
-        logging.warning("force_n=%d but only %d sample(s); using k=%d", k_req, n, k)
-    if k == 1:
-        return np.zeros(n, dtype=int)
     if n == 0:
         return np.zeros(0, dtype=int)
 
-    # ---- HARD K MODE ----
-    if force_n is not None and force_n >= 1:
-        k = int(max(1, min(force_n, max_speakers)))
+    # ---- HARD K MODE (only if user passed --force-n) ----
+    if force_n is not None and int(force_n) >= 1:
+        k_req = max(1, int(force_n))
+        k = int(min(k_req, max_speakers, n))
+        if k < k_req:
+            logging.warning("force_n=%d but only %d sample(s); using k=%d", k_req, n, k)
+        if k == 1:
+            return np.zeros(n, dtype=int)
+
         logging.info("HARD-K mode: force_n=%d (bypass guard/fallback/collapse)", k)
-        # Try Spectral with fixed K first
         clusterer = SpectralClusterer(
-            min_clusters=k, max_clusters=k,
-            refinement_options=RefinementOptions(p_percentile=0.90, gaussian_blur_sigma=1)
+            min_clusters=k, max_clusters=k, refinement_options=RefinementOptions(p_percentile=0.90, gaussian_blur_sigma=1)
         )
         try:
             labels = clusterer.predict(X)
@@ -512,14 +566,8 @@ def pick_labels(embeddings, method="bic", min_speakers=1, max_speakers=4,
 
         # If degenerate (<K uniques), use Agglomerative(K) with tiny jitter to break ties
         if len(np.unique(labels)) < k:
-            logging.info("Spectral returned %d<%d clusters → fallback Agglomerative(K)",
-                         len(np.unique(labels)), k)
-            Xj = (X + 1e-4 * np.random.randn(*X.shape)).astype(np.float32)
-            try:
-                ac = AgglomerativeClustering(n_clusters=k, metric="cosine", linkage="average")
-            except TypeError:
-                ac = AgglomerativeClustering(n_clusters=k, affinity="cosine", linkage="average")
-            labels = ac.fit_predict(Xj)
+            logging.info("Spectral returned %d<%d clusters → fallback Agglomerative(K)", len(np.unique(labels)), k)
+            labels = _try_agglomerative_k(X, k)
 
         _describe_partition(X, labels, prefix="after HARD-K")
         return labels
@@ -529,8 +577,7 @@ def pick_labels(embeddings, method="bic", min_speakers=1, max_speakers=4,
     D = cosine_distances(X)
     tri = D[np.triu_indices_from(D, k=1)]
     q90 = float(np.quantile(tri, 0.90)) if tri.size else 0.0
-    logging.info("guard check: q90=%.3f (thresh=%.3f) %s", q90, guard_q90,
-                 "(DISABLED)" if no_guard else "")
+    logging.info("guard check: q90=%.3f (thresh=%.3f) %s", q90, guard_q90, "(DISABLED)" if no_guard else "")
     if not no_guard and q90 <= float(guard_q90):
         logging.info("→ guard fired: returning 1 cluster")
         return np.zeros(n, dtype=int)
@@ -545,42 +592,65 @@ def pick_labels(embeddings, method="bic", min_speakers=1, max_speakers=4,
 
     _describe_partition(X, labels, prefix="after primary")
 
+    # If primary came back as 1 cluster, try a conservative rescue split.
+    if len(np.unique(labels)) == 1 and max_speakers >= 2:
+        rescued = _rescue_multicluster(
+            X,
+            min_k=max(2, int(min_speakers)),
+            max_k=int(max_speakers),
+            min_sil=RESCUE_MIN_SIL,
+            min_cent=RESCUE_MIN_CENT,
+            min_prop=RESCUE_MIN_PROP,
+        )
+        if rescued is not None and len(np.unique(rescued)) >= 2:
+            labels = rescued
+            _describe_partition(X, labels, prefix="after RESCUE")
+
     # 2) flimsy? try bounded Agglomerative(K)
     if len(np.unique(labels)) > 1:
-        try:
-            sil0 = float(silhouette_score(X, labels))
-        except Exception:
-            sil0 = -1.0
+        sil0 = _silhouette_safe(X, labels)
         if sil0 < float(flimsy_sil):
             k0 = max(int(min_speakers), min(int(max_speakers), len(np.unique(labels))))
             k0 = max(2, k0)
-            logging.info("silhouette=%.3f < %.3f → fallback Agglomerative(n_clusters=%d)",
-                         sil0, flimsy_sil, k0)
-            try:
-                ac = AgglomerativeClustering(n_clusters=k0, metric="cosine", linkage="average")
-            except TypeError:
-                ac = AgglomerativeClustering(n_clusters=k0, affinity="cosine", linkage="average")
-            labels = ac.fit_predict(X)
+            logging.info("silhouette=%.3f < %.3f → fallback Agglomerative(n_clusters=%d)", sil0, flimsy_sil, k0)
+            labels = _try_agglomerative_k(X, k0)
             _describe_partition(X, labels, prefix="after fallback")
 
     # 3) absorb tiny clusters
     if len(np.unique(labels)) > 1:
-        labels = _absorb_tiny_clusters(X, labels, min_cluster_size=min_cluster_size)
-        _describe_partition(X, labels, prefix="after absorb")
+        # absorb clusters smaller than MIN_CLUSTER_SIZE
+        labs, C = _centroids(X, labels)
+        sizes = {l: int((labels == l).sum()) for l in labs}
+        big = [l for l in labs if sizes[l] >= MIN_CLUSTER_SIZE]
+        tiny = [l for l in labs if sizes[l] < MIN_CLUSTER_SIZE]
+        if tiny and big:
+            C_big = _unit_norm(np.vstack([C[list(labs).index(l)] for l in big]))
+            new = labels.copy()
+            for t in tiny:
+                idx = np.where(labels == t)[0]
+                ct = _unit_norm(C[list(labs).index(t)][None, :])
+                d = cosine_distances(ct, C_big)[0]
+                target = big[int(np.argmin(d))]
+                new[idx] = target
+            uniq = np.unique(new)
+            remap = {l: i for i, l in enumerate(uniq)}
+            labels = np.array([remap[l] for l in new], dtype=int)
+            _describe_partition(X, labels, prefix="after absorb")
 
     # 4) optional collapse-to-1
     if not no_collapse and len(np.unique(labels)) > 1:
-        maybe = _collapse_to_one(
-            X, labels,
-            collapse_majority=collapse_majority,
-            collapse_sil=collapse_sil,
-            collapse_centroid=collapse_centroid,
-        )
-        if maybe is not None:
+        # If massive imbalance AND poor structure, collapse.
+        ncl = len(np.unique(labels))
+        _, counts = np.unique(labels, return_counts=True)
+        majority = counts.max() / float(n)
+        sil = _silhouette_safe(X, labels)
+        dm = _min_centroid_dist(X, labels)
+        if majority >= float(collapse_majority) or sil < float(collapse_sil) or dm <= float(collapse_centroid):
             logging.info("final collapse triggered → 1 cluster")
-            return maybe
+            return np.zeros(n, dtype=int)
 
     return labels
+
 
 # ---------- Transcription ----------
 def transcribe_audio(filepath, model_name=DEFAULT_WHISPER_MODEL, language=None, device="cpu"):
@@ -588,6 +658,7 @@ def transcribe_audio(filepath, model_name=DEFAULT_WHISPER_MODEL, language=None, 
     model = whisper.load_model(model_name, device=device)
     result = model.transcribe(filepath, language=language)
     return result.get("segments", [])
+
 
 # ---------- Assignment helpers (reduce leakage) ----------
 def _label_at_time(t, diar_ts, diar_labels):
@@ -601,15 +672,17 @@ def _label_at_time(t, diar_ts, diar_labels):
     j = int(np.argmin([abs(c - t) for c in centers]))
     return int(diar_labels[j])
 
+
 def _segment_cutpoints_within(start, end, diar_ts, diar_labels):
     # boundaries where labels change: use start time of the new window
     cuts = []
     for i in range(1, len(diar_labels)):
-        if diar_labels[i] != diar_labels[i-1]:
+        if diar_labels[i] != diar_labels[i - 1]:
             t = diar_ts[i][0]
             if start < t < end:
                 cuts.append(t)
     return [start] + cuts + [end]
+
 
 def _split_text_proportionally(text, durations):
     text = (text or "").strip()
@@ -617,19 +690,20 @@ def _split_text_proportionally(text, durations):
         return [text]
     total = float(sum(max(1e-6, d) for d in durations))
     L = len(text)
-    # proposed cut indices
     cuts = []
     acc = 0.0
     for d in durations[:-1]:
         acc += d
         idx = int(round((acc / total) * L))
         # snap to nearby whitespace to avoid mid-word cuts
-        lo = max(0, idx - 10); hi = min(L - 1, idx + 10)
+        lo = max(0, idx - 10)
+        hi = min(L - 1, idx + 10)
         window = text[lo:hi]
         offs = None
         for k in range(len(window)):
             if window[k].isspace():
-                offs = k; break
+                offs = k
+                break
         if offs is not None:
             idx = lo + offs
         cuts.append(idx)
@@ -640,9 +714,11 @@ def _split_text_proportionally(text, durations):
         prev = c
     return pieces
 
+
 def _words_to_text(words):
     # words may already contain spaces; keep as is
     return "".join(w.get("word", "") for w in words).strip()
+
 
 def assign_speakers_to_transcripts(transcript_segments, diar_labels, diar_timestamps, split_at_diar=True):
     """
@@ -653,12 +729,14 @@ def assign_speakers_to_transcripts(transcript_segments, diar_labels, diar_timest
         if len(diar_labels) == 0 or len(diar_timestamps) == 0:
             out = []
             for seg in transcript_segments:
-                out.append({
-                    "start": float(seg.get("start", 0.0)),
-                    "end": float(seg.get("end", 0.0)),
-                    "speaker": "Speaker 1",
-                    "text": (seg.get("text") or "").strip(),
-                })
+                out.append(
+                    {
+                        "start": float(seg.get("start", 0.0)),
+                        "end": float(seg.get("end", 0.0)),
+                        "speaker": "Speaker 1",
+                        "text": (seg.get("text") or "").strip(),
+                    }
+                )
             return out
         raise ValueError("Mismatch between diarization labels and timestamps.")
 
@@ -715,6 +793,7 @@ def assign_speakers_to_transcripts(transcript_segments, diar_labels, diar_timest
 
     return out
 
+
 def merge_consecutive_speaker_segments(speaker_transcripts, max_gap=0.2):
     if not speaker_transcripts:
         return []
@@ -735,6 +814,7 @@ def merge_consecutive_speaker_segments(speaker_transcripts, max_gap=0.2):
     merged.append(cur)
     return merged
 
+
 def format_timestamp(seconds):
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
@@ -742,6 +822,7 @@ def format_timestamp(seconds):
     if hours > 0:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     return f"{minutes:02d}:{secs:02d}"
+
 
 def format_output_text(speaker_transcripts, include_end=True):
     lines = []
@@ -753,6 +834,7 @@ def format_output_text(speaker_transcripts, include_end=True):
         lines.append(f"{head}\n{seg['text']}\n")
     return "\n".join(lines)
 
+
 def _fmt_srt_time(t):
     ms = int(round(t * 1000))
     h, ms = divmod(ms, 3600000)
@@ -760,12 +842,14 @@ def _fmt_srt_time(t):
     s, ms = divmod(ms, 1000)
     return f"{h:02}:{m:02}:{s:02},{ms:03}"
 
+
 def _fmt_vtt_time(t):
     ms = int(round(t * 1000))
     h, ms = divmod(ms, 3600000)
     m, ms = divmod(ms, 60000)
     s, ms = divmod(ms, 1000)
     return f"{h:02}:{m:02}:{s:02}.{ms:03}"
+
 
 def write_srt(speaker_transcripts, path):
     with open(path, "w", encoding="utf-8") as f:
@@ -775,6 +859,7 @@ def write_srt(speaker_transcripts, path):
                 f"({seg['speaker']}) {seg['text'].strip()}\n\n"
             )
 
+
 def write_vtt(speaker_transcripts, path):
     with open(path, "w", encoding="utf-8") as f:
         f.write("WEBVTT\n\n")
@@ -783,6 +868,7 @@ def write_vtt(speaker_transcripts, path):
                 f"{_fmt_vtt_time(seg['start'])} --> {_fmt_vtt_time(seg['end'])}\n"
                 f"({seg['speaker']}) {seg['text'].strip()}\n\n"
             )
+
 
 # ---------- Main ----------
 def main(
@@ -815,9 +901,9 @@ def main(
     include_span=True,
     embedder="ecapa",
     use_cp=True,
-    no_collapse=True,      # default: DO NOT collapse to 1
-    no_guard=False,        # allow disabling the "single-speaker guard"
-    use_pitch=False,       # optional pitch feature
+    no_collapse=True,  # default: DO NOT collapse to 1
+    no_guard=False,  # allow disabling the "single-speaker guard"
+    use_pitch=False,  # optional pitch feature
     cp_enter=CP_ENTER,
     cp_exit=CP_EXIT,
     min_region_sec=MIN_REGION_SEC,
@@ -846,7 +932,8 @@ def main(
     logging.info("Segmenting audio%s...", " with VAD" if use_vad else "")
     if use_vad:
         segments, timestamps = segment_audio_with_vad(
-            audio, sr,
+            audio,
+            sr,
             window_size=window_size,
             hop_size=hop_size,
             frame_ms=vad_frame_ms,
@@ -863,10 +950,7 @@ def main(
     if embedder == "ecapa":
         if HAVE_ECAPA:
             logging.info("Embedding with ECAPA-TDNN (speechbrain) on %s ...", dev)
-            sb_enc = EncoderClassifier.from_hparams(
-                source="speechbrain/spkrec-ecapa-voxceleb",
-                run_opts={"device": dev}
-            )
+            sb_enc = EncoderClassifier.from_hparams(source="speechbrain/spkrec-ecapa-voxceleb", run_opts={"device": dev})
             win_embs = get_embeddings_ecapa(segments, sb_enc, dev)
         else:
             if not HAVE_RESEMBLYZER:
@@ -891,15 +975,13 @@ def main(
 
     # --- CHANGE-POINT REGIONIZATION ---
     if use_cp:
-        regions, ts_regions = _regionize_by_changepoints(
-            X_win, timestamps, enter=cp_enter, exit=cp_exit, min_region_sec=min_region_sec
-        )
+        regions, ts_regions = _regionize_by_changepoints(X_win, timestamps, enter=cp_enter, exit=cp_exit, min_region_sec=min_region_sec)
         X_reg = _mean_embs_by_regions(X_win, regions)
         # average pitch over region, if used
         if use_pitch and pitch_win is not None:
             pr = []
             for s, e in regions:
-                pr.append(float(np.mean(pitch_win[s:e+1])))
+                pr.append(float(np.mean(pitch_win[s : e + 1])))
             pitch_reg = np.array(pr, dtype=np.float32).reshape(-1, 1)
             feat_for_cluster = np.hstack([X_reg, pitch_reg])
         else:
@@ -918,13 +1000,8 @@ def main(
             feat_for_cluster = X_win
 
     # --- If user demands multi-speaker but CP produced weak evidence, fall back ---
-    def _min_prop(lbls):
-        if getattr(lbls, "size", 0) == 0:
-            return 1.0
-        _, c = np.unique(lbls, return_counts=True)
-        return float(c.min()) / float(lbls.size)
+    too_few_regions = use_cp and (force_n is not None) and (feat_for_cluster.shape[0] < int(force_n) * 3)
 
-    too_few_regions = (use_cp and force_n and feat_for_cluster.shape[0] < int(force_n) * 3)
     lab_regions = pick_labels(
         feat_for_cluster,
         method=method,
@@ -941,16 +1018,19 @@ def main(
         no_collapse=no_collapse,
         no_guard=no_guard,
     )
-    too_imbalanced = (use_cp and force_n and len(np.unique(lab_regions)) >= 2 and _min_prop(lab_regions) < 0.10)
+    too_imbalanced = (
+        use_cp and (force_n is not None) and len(np.unique(lab_regions)) >= 2 and _min_prop(lab_regions) < 0.10
+    )
 
     if too_few_regions or too_imbalanced:
         logging.warning(
             "CP produced weak evidence (regions=%d, min_prop=%.3f). Falling back to window-level clustering.",
-            feat_for_cluster.shape[0], _min_prop(lab_regions)
+            feat_for_cluster.shape[0],
+            _min_prop(lab_regions),
         )
         regions = [(i, i) for i in range(len(X_win))]
         ts_regions = timestamps
-        feat_for_cluster = (np.hstack([X_win, pitch_win]) if (use_pitch and pitch_win is not None) else X_win)
+        feat_for_cluster = np.hstack([X_win, pitch_win]) if (use_pitch and pitch_win is not None) else X_win
         lab_regions = pick_labels(
             feat_for_cluster,
             method=method,
@@ -970,8 +1050,7 @@ def main(
 
     # Expand region labels back to window level
     labels = _expand_region_labels_to_windows(regions, lab_regions, len(X_win))
-    logging.info("label histogram (window level): %s",
-                 np.bincount(labels).tolist() if labels.size else [])
+    logging.info("label histogram (window level): %s", np.bincount(labels).tolist() if labels.size else [])
 
     diar_ts = timestamps  # align at window-level, not region-level
 
@@ -984,9 +1063,7 @@ def main(
     logging.info("Transcribing with Whisper (%s) on %s...", whisper_model, dev)
     transcript_segments = transcribe_audio(audio_filepath, model_name=whisper_model, language=language, device=dev)
 
-    speaker_transcripts = assign_speakers_to_transcripts(
-        transcript_segments, labels, diar_ts, split_at_diar=split_at_diar
-    )
+    speaker_transcripts = assign_speakers_to_transcripts(transcript_segments, labels, diar_ts, split_at_diar=split_at_diar)
 
     if merge_consecutive:
         logging.info("Merging consecutive segments by same speaker (max_gap=%.2fs)...", max_gap_merge)
@@ -1007,22 +1084,24 @@ def main(
                 f.write(txt)
         logging.info("Saved to %s", output_filepath)
 
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Local diarization (ECAPA / Resemblyzer) + Whisper transcription")
     ap.add_argument("audio", help="Path to audio file")
     ap.add_argument("-o", "--out", dest="out", default=None, help="Output (.txt | .srt | .vtt). Default: stdout")
 
     # embedder backend
-    ap.add_argument("--embedder", choices=["ecapa", "resemblyzer"], default="ecapa",
-                    help="Embedding backend (default: ecapa). Falls back to Resemblyzer if ECAPA unavailable.")
+    ap.add_argument(
+        "--embedder",
+        choices=["ecapa", "resemblyzer"],
+        default="ecapa",
+        help="Embedding backend (default: ecapa). Falls back to Resemblyzer if ECAPA unavailable.",
+    )
 
     # simple knobs
     ap.add_argument("--device", default=DEFAULT_DEVICE, help="cpu | cuda | cuda:N | auto (default)")
     ap.add_argument("--whisper-model", default=DEFAULT_WHISPER_MODEL, help="Whisper model name")
-    
-    ap.add_argument("--language", "--lang", dest="language", default=None,
-                    help="Force language for Whisper (e.g., fi, en)")
-
+    ap.add_argument("--language", "--lang", dest="language", default=None, help="Force language for Whisper (e.g., fi, en)")
     ap.add_argument("--force-n", type=int, default=None, help="Force exact number of speakers")
 
     # clustering
@@ -1033,10 +1112,8 @@ if __name__ == "__main__":
     # VAD + windows
     ap.add_argument("--no-vad", action="store_true", help="Disable WebRTC VAD gating")
     group = ap.add_mutually_exclusive_group()
-    group.add_argument("--span", dest="span", action="store_true",
-                       help="Include end time in .txt headers (default)")
-    group.add_argument("--no-span", dest="span", action="store_false",
-                       help="Hide end time in .txt headers")
+    group.add_argument("--span", dest="span", action="store_true", help="Include end time in .txt headers (default)")
+    group.add_argument("--no-span", dest="span", action="store_false", help="Hide end time in .txt headers")
     ap.set_defaults(span=True)
 
     ap.add_argument("--window", type=float, default=WINDOW_SIZE, help="Window size (sec)")
@@ -1056,13 +1133,12 @@ if __name__ == "__main__":
     ap.add_argument("--no-collapse", action="store_true", help="Disable final collapse-to-one heuristic (default on)")
     ap.add_argument("--no-guard", action="store_true", help="Disable single-speaker guard")
     ap.add_argument("--pitch", action="store_true", help="Append z-scored log-F0 to features")
-    ap.add_argument("--no-split", dest="split", action="store_false",
-                    help="Do not split Whisper segments at diarization boundaries")
+    ap.add_argument("--no-split", dest="split", action="store_false", help="Do not split Whisper segments at diarization boundaries")
     ap.set_defaults(split=True)
 
     # CP thresholds (new)
     ap.add_argument("--cp-enter", type=float, default=CP_ENTER, help="Changepoint enter threshold")
-    ap.add_argument("--cp-exit",  type=float, default=CP_EXIT,  help="Changepoint exit threshold")
+    ap.add_argument("--cp-exit", type=float, default=CP_EXIT, help="Changepoint exit threshold")
     ap.add_argument("--min-region-sec", type=float, default=MIN_REGION_SEC, help="Minimum region length (sec)")
 
     # thresholds
@@ -1118,7 +1194,6 @@ if __name__ == "__main__":
         min_region_sec=args.min_region_sec,
         split_at_diar=args.split,
     )
-
 
 # # /// ALT: defaults to 1; conservative. 
 # # /// GMM+BIC => sanity-checked split silhouette => min cluster size => centroid separateion
