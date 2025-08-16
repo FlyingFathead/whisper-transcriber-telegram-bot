@@ -72,7 +72,6 @@ except Exception:
 # Try webrtcvad; fall back to energy gate if missing.
 try:
     import webrtcvad
-
     HAVE_WEBRTCVAD = True
 except Exception:
     webrtcvad = None
@@ -494,7 +493,7 @@ def _try_agglomerative_k(X, k):
         ac = AgglomerativeClustering(n_clusters=k, metric="cosine", linkage="average")
     except TypeError:
         ac = AgglomerativeClustering(n_clusters=k, affinity="cosine", linkage="average")
-    # tiny jitter helps break ties
+    # tiny jitter helps break ties / degeneracy
     Xj = (X + 1e-4 * np.random.randn(*X.shape)).astype(np.float32)
     return ac.fit_predict(Xj)
 
@@ -639,7 +638,6 @@ def pick_labels(embeddings, method="bic", min_speakers=1, max_speakers=4,
 
     # 4) optional collapse-to-1
     if not no_collapse and len(np.unique(labels)) > 1:
-        # If massive imbalance AND poor structure, collapse.
         ncl = len(np.unique(labels))
         _, counts = np.unique(labels, return_counts=True)
         majority = counts.max() / float(n)
@@ -999,9 +997,7 @@ def main(
         else:
             feat_for_cluster = X_win
 
-    # --- If user demands multi-speaker but CP produced weak evidence, fall back ---
-    too_few_regions = use_cp and (force_n is not None) and (feat_for_cluster.shape[0] < int(force_n) * 3)
-
+    # --- Primary clustering on regions/windows ---
     lab_regions = pick_labels(
         feat_for_cluster,
         method=method,
@@ -1018,19 +1014,25 @@ def main(
         no_collapse=no_collapse,
         no_guard=no_guard,
     )
-    too_imbalanced = (
-        use_cp and (force_n is not None) and len(np.unique(lab_regions)) >= 2 and _min_prop(lab_regions) < 0.10
+
+    # --- Generalized CP weakness detection → fallback to window-level ---
+    n_reg = feat_for_cluster.shape[0]
+    pmin = _min_prop(lab_regions) if getattr(lab_regions, "size", 0) else 1.0
+    uniq = len(np.unique(lab_regions)) if getattr(lab_regions, "size", 0) else 1
+    weak_cp = use_cp and (
+        n_reg < max(5, 2 * int(min_speakers))          # too few regions to trust
+        or uniq == 1                                   # collapsed partition
+        or (uniq >= 2 and pmin < 0.12)                 # severe imbalance
     )
 
-    if too_few_regions or too_imbalanced:
+    if weak_cp:
         logging.warning(
-            "CP produced weak evidence (regions=%d, min_prop=%.3f). Falling back to window-level clustering.",
-            feat_for_cluster.shape[0],
-            _min_prop(lab_regions),
+            "CP produced weak evidence (regions=%d, uniq=%d, min_prop=%.3f). Falling back to window-level clustering.",
+            n_reg, uniq, pmin
         )
         regions = [(i, i) for i in range(len(X_win))]
         ts_regions = timestamps
-        feat_for_cluster = np.hstack([X_win, pitch_win]) if (use_pitch and pitch_win is not None) else X_win
+        feat_for_cluster = (np.hstack([X_win, pitch_win]) if (use_pitch and pitch_win is not None) else X_win)
         lab_regions = pick_labels(
             feat_for_cluster,
             method=method,
