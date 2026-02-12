@@ -3,7 +3,7 @@
 # openai-whisper transcriber-bot for Telegram
 
 # version of this program
-version_number = "0.1717.1"
+version_number = "0.1717.2"
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
@@ -947,28 +947,88 @@ class TranscriberBot:
                     break
 
 if __name__ == '__main__':
-    print_startup_message(version_number)  # Print startup message
+    # -----------------------------
+    # 1) Startup banner + config logs
+    # -----------------------------
+    print_startup_message(version_number)  # Print startup message (banner/version)
 
-    # Log ytdlp cookie info right away
+    # Log yt-dlp cookie settings right away so startup logs show what cookie mode we're using
     log_cookies_config()
 
-    # Read the update settings from config
+    # -----------------------------
+    # 2) Read update settings from config.ini
+    # -----------------------------
     config = ConfigLoader.get_config()
-    check_for_updates = config.getboolean('UpdateSettings', 'CheckForYTDLPUpdates', fallback=False)
-    update_command = config.get('UpdateSettings', 'UpdateCommand', fallback='pip install -U yt-dlp')
 
+    # Master switch: if False, we skip any update attempt entirely
+    check_for_updates = config.getboolean(
+        'UpdateSettings',
+        'CheckForYTDLPUpdates',
+        fallback=False
+    )
+
+    # The update command as a *single string* (kept for backwards compatibility).
+    # Example from your config:
+    #   python -m pip install -U --index-url https://pypi.org/simple "yt-dlp[default]"
+    #
+    # IMPORTANT:
+    # - We will NOT pass this string through a shell.
+    # - We will split it into argv with shlex so quotes are handled correctly.
+    update_command = config.get(
+        'UpdateSettings',
+        'UpdateCommand',
+        fallback='python -m pip install -U yt-dlp'
+    )
+
+    # -----------------------------
+    # 3) Run yt-dlp update (safe: no shell=True)
+    # -----------------------------
     if check_for_updates:
+        import shlex
+
         logger.info("Checking for yt-dlp updates...")
+
         try:
+            # Convert command string -> argv list safely.
+            # This preserves quoted args like "yt-dlp[default]" as one argument.
+            cmd = shlex.split(update_command)
+
+            # Run the command *without* a shell.
+            # - No shell injection risk from config contents
+            # - No weird quoting edge cases
+            # - text=True gives you strings (no .decode())
             result = subprocess.run(
-                update_command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                cmd,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
             )
-            logger.info(f"yt-dlp update output:\n{result.stdout.decode()}")
+
+            # Log stdout/stderr cleanly (stderr isn't always an error with pip)
+            if result.stdout.strip():
+                logger.info(f"yt-dlp update stdout:\n{result.stdout}")
+
+            if result.stderr.strip():
+                logger.warning(f"yt-dlp update stderr:\n{result.stderr}")
+
             logger.info("yt-dlp updated successfully.")
+
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to update yt-dlp: {e.stderr.decode()}")
+            # CalledProcessError includes stdout/stderr when capture_output / PIPE is used
+            logger.error(
+                "Failed to update yt-dlp.\n"
+                f"Command: {cmd}\n"
+                f"Return code: {e.returncode}\n"
+                f"stdout:\n{e.stdout}\n"
+                f"stderr:\n{e.stderr}"
+            )
+
         except Exception as e:
             logger.error(f"An error occurred while updating yt-dlp: {e}")
 
+    # -----------------------------
+    # 4) Start the bot
+    # -----------------------------
     bot = TranscriberBot()
     bot.run()
