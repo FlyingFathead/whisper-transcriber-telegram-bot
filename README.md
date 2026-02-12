@@ -220,6 +220,13 @@ If you just need to see the options and help, type:
 ```
 
 ## Changes
+- v0.1717.2 - **Safer yt-dlp auto-update execution (no shell)**
+  - The startup update command is now executed without `shell=True` (uses argument splitting instead).
+    - This avoids shell injection footguns and makes quoted args like `"yt-dlp[default]"` behave reliably. See more info on yt-dlp's EJS dilemma [here](https://github.com/yt-dlp/yt-dlp/wiki/EJS).
+  - Updated the recommended `UpdateCommand` to use:
+    - `python -m pip ... "yt-dlp[default]"`
+    - This installs yt-dlp with its optional/default extras, improving compatibility with sites that require additional components (see the yt-dlp EJS notes in the wiki).
+  - Note: In Docker/venv environments, using `python -m pip ...` ensures the update applies to the interpreter running the bot.    
 - v0.1717.1 - Language selection _(small tweak)_
    - Language can now be shorthand-selected with `/lang` in addition to `/language`
 - v0.1717 - **Timestamp formatting fixes & dynamic hour display**
