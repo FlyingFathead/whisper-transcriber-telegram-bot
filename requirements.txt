@@ -8,3 +8,4 @@ pydub>=0.25.1
 spectralcluster>=0.2.21
 resemblyzer>=0.1.4
 scikit-learn>=1.5.2
+aiohttp>=3.9.0
