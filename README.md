@@ -219,7 +219,50 @@ If you just need to see the options and help, type:
 ./src/utils/configmerger.py
 ```
 
+## Whisper API Mode
+
+The bot can offload transcription to a remote Whisper-compatible API server instead of running a local model. This requires a running instance of a Whisper ASR webservice (e.g. `faster-whisper-server`, `whisperX`).
+
+### Configuration
+
+Add or edit the `[WhisperAPISettings]` section in `config/config.ini`:
+
+```ini
+[WhisperAPISettings]
+use_api_mode = False
+api_url = http://localhost:9000
+api_engine = faster_whisper
+verify_ssl = True
+enable_diarization = False
+min_speakers =
+max_speakers =
+enable_vad_filter = True
+enable_word_timestamps = False
+api_timeout = 300
+api_retry_attempts = 3
+fallback_to_local = False
+```
+
+### Config Reference
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `use_api_mode` | bool | `False` | When `True`, transcription requests are sent to the API server. When `False`, the local Whisper model is used. |
+| `api_url` | string | `http://localhost:9000` | URL of the Whisper API webservice. |
+| `api_engine` | string | `faster_whisper` | Not sent to the server. Controls which query parameters the client includes in API requests. Set this to match the engine your server was started with. `faster_whisper` enables `vad_filter` and `word_timestamps` params. `whisperx` enables `diarize`, `min_speakers`, and `max_speakers` params. |
+| `verify_ssl` | bool | `True` | SSL certificate verification. Set to `False` for self-signed certificates. |
+| `enable_diarization` | bool | `False` | Request speaker diarization from the API. |
+| `min_speakers` | int or empty | _(empty)_ | Minimum number of speakers for diarization. Leave empty for auto. |
+| `max_speakers` | int or empty | _(empty)_ | Maximum number of speakers for diarization. Leave empty for auto. |
+| `enable_vad_filter` | bool | `True` | Voice activity detection filter. |
+| `enable_word_timestamps` | bool | `False` | Request word-level timestamps. |
+| `api_timeout` | int | `300` | Request timeout in seconds. |
+| `api_retry_attempts` | int | `3` | Number of retries on failure. |
+| `fallback_to_local` | bool | `False` | When `True`, falls back to local Whisper model if the API is unreachable. When `False`, the request fails with an error message to the user. |
+
 ## Changes
+- v0.1718 - **Transcribing audio with remote Whisper ASR service**
+  - Added a mode to not run local model, but to use remote API instead (see `config.ini` for options)
 - v0.1717.2 - **Safer yt-dlp auto-update execution (no shell)**
   - The startup update command is now executed without `shell=True` (uses argument splitting instead).
     - This avoids shell injection footguns and makes quoted args like `"yt-dlp[default]"` behave reliably. See more info on yt-dlp's EJS dilemma [here](https://github.com/yt-dlp/yt-dlp/wiki/EJS).
