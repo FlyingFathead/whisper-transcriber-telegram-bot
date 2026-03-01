@@ -3,10 +3,11 @@ version: '3.4'
 services:
 
   whisper-transcriber-telegram-bot:
-    image: whisper-transcriber-telegram-bot
+    image: ghcr.io/flyingfathead/whisper-transcriber-telegram-bot
     container_name: whisper-transcriber-telegram-bot
     volumes:
       - ./config:/app/config
+      - ./transcriptions:/app/transcriptions
       - whisper_cache:/root/.cache/whisper
     environment:
       - TELEGRAM_BOT_TOKEN=
