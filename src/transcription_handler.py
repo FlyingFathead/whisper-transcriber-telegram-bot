@@ -19,7 +19,7 @@ import os
 import textwrap
 import configparser
 from urllib.parse import urlparse, parse_qs
-from datetime import datetime, timedelta
+from datetime import datetime
 from shlex import split as shlex_split
 # import wave
 from pydub import AudioSegment
@@ -686,8 +686,9 @@ async def process_url_message(message_text, bot, update, model, language):
         notification_settings = ConfigLoader.get_notification_settings()
         gpu_template = notification_settings['gpu_message_template']
         gpu_no_gpu   = notification_settings['gpu_message_no_gpu']
+        audio_info_template = notification_settings['audio_info_message']
         should_send_detailed_info = notification_settings['send_detailed_info']
-        send_video_info = notification_settings['send_video_info'] 
+        send_video_info = notification_settings['send_video_info']
 
         # for yt-dlp version debugging
         await debug_yt_dlp_version()
@@ -833,12 +834,6 @@ async def process_url_message(message_text, bot, update, model, language):
             audio_duration = details.get('audio_duration', 0)
             estimated_time = estimate_transcription_time(model, audio_duration)
             estimated_minutes = estimated_time / 60
-            current_time = datetime.now()
-            estimated_finish_time = current_time + timedelta(minutes=estimated_minutes)
-
-            time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
-            estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
-
             log_message = (
                 f"User ID: {user_id}\n"
                 f"Requested URL for transcription: {normalized_url}\n"
@@ -870,13 +865,12 @@ async def process_url_message(message_text, bot, update, model, language):
             language_setting = language if language else "autodetection"
 
             # If user wants the detailed transcription message, send it
-            detailed_message = (
-                f"Whisper model in use:\n{model}\n\n"
-                f"Model language set to:\n{language_setting}\n\n"
-                f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
-                f"Time now:\n{time_now_str}\n\n"
-                f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
-                "🎙️✍️ Transcribing audio..."
+            formatted_audio_duration = format_duration(audio_duration)
+            detailed_message = audio_info_template.format(
+                audio_duration=formatted_audio_duration,
+                model=model,
+                language=language_setting,
+                est_time=estimated_minutes,
             )
 
             # log the detailed info whether or not we're sending it to the user
