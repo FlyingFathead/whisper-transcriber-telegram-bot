@@ -1,14 +1,14 @@
 # whisper-transcriber-telegram-bot
 
-A local Whisper AI transcriber bot for Telegram, utilizing local GPU's or CPU for processing. No Whisper API access required -- just utilize whatever available hardware you have. The bot uses `GPUtil` to automatically select an available CUDA GPU, or reverts to CPU-only if none is found.
+A local Whisper AI transcriber bot for Telegram that uses your local GPU or CPU for processing. No Whisper API access is required -- it runs on whatever local hardware you have available. The bot uses `GPUtil` to automatically select an available CUDA GPU, or reverts to CPU-only if none is found.
 
 **Runs on the latest OpenAI Whisper v3 `turbo` model by default** (as of September 2024). Models can be selected both from `config.ini` and i.e. with the user command `/model`.
 
 The program has been written in Python and it works on Python version `3.10+`, tested up to Python `3.12.2`.
 
-Designed for transcribing audio from various media source, such as URLs supported by `yt-dlp`, or via Telegram's audio messages or over media file uploads on Telegram (`.mp3`, `.wav`, `.ogg`, `.flac`, etc.)
+Designed for transcribing audio from various media sources, including URLs supported by `yt-dlp`, Telegram voice messages, and uploaded media files on Telegram (`.mp3`, `.wav`, `.ogg`, `.flac`, etc.).
 
-Sites supported by `yt-dlp` are [listed here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). Supported audio and video file uploads can be configured separately from `config.ini`. Compatible with all `ffmpeg`-supported media formats), with up to `20MB` direct file transfer sizes as supported by Telegram in their bot API.
+Sites supported by `yt-dlp` are [listed here](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). Supported audio and video file uploads can be configured separately in `config.ini`. The bot is compatible with `ffmpeg`-supported media formats, with direct file upload sizes up to `20MB` as supported by the Telegram Bot API.
 
 Can be safely installed and deployed with [Docker](https://www.docker.com/) by using the included `Dockerfile`.
 
@@ -51,7 +51,7 @@ To set up the Whisper Transcriber Telegram Bot, follow these steps:
 
 3. Install [ffmpeg](https://ffmpeg.org) (required for media processing):
 
-   On Ubuntu or Debian tree Linux:
+   On Ubuntu or Debian-based Linux:
    ```bash
    sudo apt update && sudo apt install ffmpeg
    ```
@@ -147,7 +147,7 @@ Just grab the latest pre-built version with:
    docker pull ghcr.io/flyingfathead/whisper-transcriber-telegram-bot:latest
    ```
 
-There is a `docker-compose.example.yaml` file in the repo, you can use it to run the bot. Just make sure to replace the `TELEGRAM_BOT_TOKEN` with your actual bot token.
+There is a `docker-compose.example.yaml` file in the repo that you can use to run the bot. Just make sure to replace the `TELEGRAM_BOT_TOKEN` with your actual bot token.
 
 ---
 
@@ -188,7 +188,7 @@ For a more complete container setup example, see `docker-compose.example.yaml`.
 
  ## Getting the Telegram Bot API Token
 
-1. If you haven't got an active [Telegram Bot API](https://core.telegram.org/bots/api) token yet, set up a new Telegram bot by interacting with Telegram's `@BotFather`. Use Telegram's user lookup to search for the user, message it and run the necessary bot setup to get your API key.
+1. If you haven't got an active [Telegram Bot API](https://core.telegram.org/bots/api) token yet,  create a new bot by talking to Telegram's `@BotFather` and following its setup instructions. Use Telegram's user lookup to search for the user, message it and run the necessary bot setup to get your API key.
 
 2. After setting up your bot and receiving your Telegram Bot API token from `@BotFather`, either copy-paste the Telegram Bot API authentication token into a text file (`config/bot_token.txt`) or set the API token as an environment variable with the name `TELEGRAM_BOT_TOKEN`. The program will look for both during startup, and you can choose whichever you want.
 
