@@ -167,17 +167,24 @@ If there's something wrong with GHCR's prebuilt image, you can also build the Do
 ---
 ### Running the Bot Using Docker
 
-To run the bot using Docker (may require `sudo`, depending on whether or not you're using a `docker` group or not):
+A Docker image is available for running the bot in a containerized setup. Docker support is included mainly as a convenience option alongside the regular non-Docker install.
+
+To run the bot with Docker (you may need `sudo` if your user is not in the `docker` group), use:
 
 ```bash
 docker run --gpus all --name whisper-transcriber-telegram-bot -d \
   -e TELEGRAM_BOT_TOKEN='YourTelegramBotToken' \
   -v whisper_cache:/root/.cache/whisper \
   ghcr.io/flyingfathead/whisper-transcriber-telegram-bot:latest
-
 ```
 
-Replace `'YourTelegramBotToken'` with your actual Telegram bot token. This command also mounts the `config` directory and the Whisper model cache directory to preserve settings and downloaded models across container restarts.
+Replace `'YourTelegramBotToken'` with your actual Telegram bot token.
+
+This command stores the Whisper model cache in the `whisper_cache` Docker volume so downloaded models persist across container restarts.
+
+For a more complete container setup example, see `docker-compose.example.yaml`.
+
+*NOTE:* Docker support is not the maintainer's primary deployment method, so the non-Docker setup is the most directly maintained path.
 
  ## Getting the Telegram Bot API Token
 
@@ -197,7 +204,7 @@ After launching your bot successfully, you can interact with it via Telegram (se
 
 - `/info` to view current settings, uptime, GPU info and queue status
 - `/help` and `/about` - get help on bot use, list version number, available models and commands, etc.
-- `/model` - view the model in usedef process_url or change to another available model.
+- `/model` - show the current model, list available models, or switch to another available model.
 - `/language` - set the model's transcription language (`auto` =  autodetect); if you know the language spoken in the audio, setting the transcription language manually with this command may improve both transcription speed and accuracy.
 
 ## Updating
