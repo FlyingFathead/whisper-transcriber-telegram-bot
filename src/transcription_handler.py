@@ -5,7 +5,7 @@
 # https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-import GPUtil 
+import GPUtil
 import sys
 import time
 import logging
@@ -29,6 +29,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 # internal modules
 from utils.language_selection import ask_language
+from whisper_api_client import transcribe_via_api, WhisperAPIError
 
 # config
 from config_loader import ConfigLoader
@@ -98,7 +99,7 @@ def get_whisper_language(user_id=None):
 
 # get the general settings
 def get_general_settings():
-    config = configparser.ConfigParser()    
+    config = configparser.ConfigParser()
     config_path = os.path.join(base_dir, 'config', 'config.ini')
     config.read(config_path)
     allow_all_sites = config.getboolean('GeneralSettings', 'AllowAllSites', fallback=False)
@@ -260,7 +261,6 @@ async def download_audio(url, audio_path):
     # ---------------------------------------------------
     #                 VIDEO DOWNLOAD PATH
     # ---------------------------------------------------
-  
     if should_download_video:
         logger.info("Identified domain requiring full video download.")
         # Step 1: Get available formats in JSON
@@ -550,19 +550,52 @@ def log_stderr(line):
     logger.error(f"Whisper stderr: {line.strip()}")
 
 # transcription logic with header inclusion based on settings
-# (always tries to use the gpu that's available with most free VRAM)
 # transcribe_audio function
 async def transcribe_audio(bot, update, audio_path, output_dir, youtube_url, video_info_message, include_header, model, device, language):
+    api_settings = ConfigLoader.get_whisper_api_settings()
+
+    if api_settings['use_api_mode']:
+        logger.info("API mode enabled, attempting to use Whisper API webservice")
+
+        try:
+            return await transcribe_audio_api(
+                bot, update, audio_path, output_dir, youtube_url,
+                video_info_message, include_header, model, device, language,
+                api_settings
+            )
+        except (WhisperAPIError, Exception) as e:
+            logger.error(f"API transcription failed: {e}")
+
+            if api_settings['fallback_to_local']:
+                logger.warning("API unavailable, falling back to local execution")
+                return await transcribe_audio_local(
+                    bot, update, audio_path, output_dir, youtube_url,
+                    video_info_message, include_header, model, device, language
+                )
+            else:
+                logger.error("Fallback to local disabled, transcription failed")
+                if update and update.message:
+                    await update.message.reply_text(
+                        "⚠️ Transcription service unavailable. Please try again later."
+                    )
+                return {}, ""
+    else:
+        logger.info("Using local Whisper transcription")
+        return await transcribe_audio_local(
+            bot, update, audio_path, output_dir, youtube_url,
+            video_info_message, include_header, model, device, language
+        )
+
+# (always tries to use the gpu that's available with most free VRAM)
+async def transcribe_audio_local(bot, update, audio_path, output_dir, youtube_url, video_info_message, include_header, model, device, language):
     log_gpu_utilization()  # Log GPU utilization before starting transcription
 
     logger.info(f"Using device: {device} for transcription")
-    
-    # transcription_command = ["whisper", audio_path, "--model", model, "--output_dir", output_dir, "--device", device]
 
     transcription_command = [
-        "whisper", audio_path, 
-        "--model", model, 
-        "--output_dir", output_dir, 
+        "whisper", audio_path,
+        "--model", model,
+        "--output_dir", output_dir,
         "--device", device
     ]
 
@@ -641,7 +674,7 @@ async def transcribe_audio(bot, update, audio_path, output_dir, youtube_url, vid
             if srt_file_path and os.path.exists(srt_file_path):
                 timestamped_txt_filename = f"{base_filename}_timestamped.txt"
                 timestamped_txt_path = os.path.join(output_dir, timestamped_txt_filename)
-                
+
                 # Use the SAME header_content that was prepared above,
                 # which respects the passed-in include_header parameter.
                 success = create_timestamped_txt_from_srt(srt_file_path, timestamped_txt_path, header_content)
@@ -660,6 +693,80 @@ async def transcribe_audio(bot, update, audio_path, output_dir, youtube_url, vid
 
     except Exception as e:
         logger.error(f"An error occurred during transcription: {e}")
+        return {}, ""
+
+# transcription logic using the API with header inclusion based on settings
+async def transcribe_audio_api(bot, update, audio_path, output_dir, youtube_url, video_info_message, include_header, model, device, language, api_settings):
+    logger.info(f"Using API mode for transcription")
+
+    ai_transcript_header = f"[ Transcript generated with: https://github.com/FlyingFathead/whisper-transcriber-telegram-bot/ | Whisper API | Engine: `{api_settings['api_engine']}` | Language: `{language}` ]"
+    header_content = ""
+
+    if include_header:
+        header_content = f"{video_info_message}\n\n{ai_transcript_header}\n\n"
+
+    base_filename = os.path.splitext(os.path.basename(audio_path))[0]
+    created_files = {}
+    raw_content = ""
+
+    try:
+        for fmt in ['txt', 'srt', 'vtt']:
+            logger.info(f"Requesting {fmt} format from API")
+
+            content = await transcribe_via_api(
+                api_url=api_settings['api_url'],
+                audio_path=audio_path,
+                model=model,
+                language=language,
+                output_format=fmt,
+                api_engine=api_settings['api_engine'],
+                vad_filter=api_settings['enable_vad_filter'],
+                word_timestamps=api_settings['enable_word_timestamps'],
+                diarize=api_settings['enable_diarization'],
+                min_speakers=api_settings['min_speakers'],
+                max_speakers=api_settings['max_speakers'],
+                timeout=api_settings['api_timeout'],
+                retry_attempts=api_settings['api_retry_attempts'],
+                verify_ssl=api_settings['verify_ssl']
+            )
+
+            file_path = f"{output_dir}/{base_filename}.{fmt}"
+
+            if fmt == 'txt':
+                raw_content = content
+                if include_header:
+                    content = header_content + content
+
+            with open(file_path, 'w') as f:
+                f.write(content)
+
+            created_files[fmt] = file_path
+            logger.info(f"API transcription file created: {file_path}")
+
+        current_transcription_settings = ConfigLoader.get_transcription_settings()
+        send_as_files_enabled = current_transcription_settings.get('send_as_files', False)
+        send_timestamped_txt_enabled = current_transcription_settings.get('send_timestamped_txt', False)
+
+        if send_as_files_enabled and send_timestamped_txt_enabled:
+            srt_file_path = created_files.get('srt')
+            if srt_file_path and os.path.exists(srt_file_path):
+                timestamped_txt_filename = f"{base_filename}_timestamped.txt"
+                timestamped_txt_path = os.path.join(output_dir, timestamped_txt_filename)
+
+                success = create_timestamped_txt_from_srt(srt_file_path, timestamped_txt_path, header_content)
+                if success:
+                    created_files['timestamped_txt'] = timestamped_txt_path
+                else:
+                    logger.error(f"Failed to create timestamped TXT file from {srt_file_path}")
+
+        return created_files, raw_content
+
+    except WhisperAPIError as e:
+        logger.error(f"API transcription failed: {e}")
+        return {}, ""
+
+    except Exception as e:
+        logger.error(f"An error occurred during API transcription: {e}")
         return {}, ""
 
 # debugger for yt-dlp version
@@ -687,7 +794,7 @@ async def process_url_message(message_text, bot, update, model, language):
         gpu_template = notification_settings['gpu_message_template']
         gpu_no_gpu   = notification_settings['gpu_message_no_gpu']
         should_send_detailed_info = notification_settings['send_detailed_info']
-        send_video_info = notification_settings['send_video_info'] 
+        send_video_info = notification_settings['send_video_info']
 
         # for yt-dlp version debugging
         await debug_yt_dlp_version()
@@ -734,7 +841,7 @@ async def process_url_message(message_text, bot, update, model, language):
                 # WARN instead of abort
                 logger.warning(f"Could not fetch video details for '{normalized_url}'. Continuing anyway.\nError: {e}")
                 await bot.send_message(
-                    chat_id=update.effective_chat.id, 
+                    chat_id=update.effective_chat.id,
                     text="⚠️ WARNING: Could not fetch video description. Continuing with audio download...",
                     disable_web_page_preview=True
                 )
@@ -790,8 +897,8 @@ async def process_url_message(message_text, bot, update, model, language):
             #     logger.error(f"An error occurred while fetching video details: {error_message}")
             #     # await bot.send_message(chat_id=update.effective_chat.id, text=f"❌ Error: {error_message}")
             #     await bot.send_message(
-            #         chat_id=update.effective_chat.id, 
-            #         text=f"❌ Error: {error_message}", 
+            #         chat_id=update.effective_chat.id,
+            #         text=f"❌ Error: {error_message}",
             #         disable_web_page_preview=True
             #     )
             #     continue  # Skip to the next URL if any
@@ -825,7 +932,7 @@ async def process_url_message(message_text, bot, update, model, language):
                 logger.info(f"Audio download failed for URL: {normalized_url}")
                 await bot.send_message(chat_id=update.effective_chat.id, text="❌ Failed to download audio. Please ensure the URL is correct and points to a supported video.")
                 continue
-            
+
             # Add this line to notify the user
             await bot.send_message(chat_id=update.effective_chat.id, text="✅ Audio download successful. Proceeding with transcription...")
 
@@ -910,7 +1017,7 @@ async def process_url_message(message_text, bot, update, model, language):
                 try:
                     logger.info("Preparing to send plain text message from raw content")
                     content = transcription_note + raw_content  # Add transcription note to the raw content
-                    
+
                     # Just to be safe, reduce the chunk even more if needed
                     safe_max = 3500  # even safer limit
                     i = 0
@@ -928,7 +1035,7 @@ async def process_url_message(message_text, bot, update, model, language):
                         # If this chunk is smaller than safe_max, we’re near the end
                         # We'll still do the partial-tag and whitespace checks, but after sending, we break
                         if len(chunk) < safe_max:
-                            # Check partial HTML near the end (optional). 
+                            # Check partial HTML near the end (optional).
                             if '<' in chunk[-5:]:  # crude check for partial tag at end
                                 last_space = chunk.rfind(' ')
                                 if last_space != -1:
@@ -992,10 +1099,10 @@ async def process_url_message(message_text, bot, update, model, language):
             #     try:
             #         logger.info(f"Preparing to send plain text message from raw content")
             #         content = transcription_note + raw_content  # Add transcription note to the raw content
-                    
+
             #         # Just to be safe, reduce the chunk even more if needed
             #         safe_max = 3500  # even safer limit
-                    
+
             #         for i in range(0, len(content), safe_max):
             #             chunk = content[i:i+safe_max]
 
@@ -1016,7 +1123,7 @@ async def process_url_message(message_text, bot, update, model, language):
             #                 last_space = chunk.rfind(' ')
             #                 if last_space != -1:
             #                     chunk = chunk[:last_space]
-                        
+
             #             # Attempt to find last whitespace so we don’t split in the middle of a word
             #             # BUT if there's NO whitespace at all, we forcibly break anyway:
             #             last_space = chunk.rfind(' ')
@@ -1028,8 +1135,8 @@ async def process_url_message(message_text, bot, update, model, language):
             #             elif last_space > -1 and last_space > 0:
             #                 # We found a space within the chunk
             #                 chunk = chunk[:last_space]
-            #                 # Note: If you do this, you might want to adjust `i` accordingly 
-            #                 # or treat the leftover text on the next iteration. 
+            #                 # Note: If you do this, you might want to adjust `i` accordingly
+            #                 # or treat the leftover text on the next iteration.
             #                 # But for a simple approach, this is enough to keep the code short.
 
             #             # Now send the message
@@ -1039,7 +1146,7 @@ async def process_url_message(message_text, bot, update, model, language):
             #         logger.error(f"Error in sending plain text message: {e}")
             # else:
             #     logger.info("Condition for sending plain text message not met.")
-            
+
             # // old method
             # if transcription_settings['send_as_messages'] and 'txt' in transcription_paths:
             #     try:
@@ -1066,7 +1173,7 @@ async def process_url_message(message_text, bot, update, model, language):
             # Check if we're keeping files or not
             if not transcription_settings['keep_audio_files'] and os.path.exists(audio_path):
                 os.remove(audio_path)
-            
+
             completion_log_message = f"Translation complete for user {user_id}, video: {normalized_url}, model: {model}"
             logging.info(completion_log_message)
 
@@ -1092,7 +1199,7 @@ Video URL: {details.get('video_url', 'No video URL available')}
 Tags: {', '.join(details.get('tags', []) if isinstance(details.get('tags'), list) else ['No tags available'])}
 Description: {details.get('description', 'No description available')}
 {header_separator}"""
-    return video_info_message   
+    return video_info_message
 
 # alt; shorten at 1000 chars.
 # Description: {textwrap.shorten(details.get('description', 'No description available'), 1000, placeholder="...")}
@@ -1103,7 +1210,7 @@ def format_srt_time_to_timestamp_prefix(time_str: str) -> str:
         # SRT time format is HH:MM:SS,ms
         main_time, _ = time_str.split(',')
         parts = main_time.split(':')
-        
+
         if len(parts) == 3:  # Format includes hours: HH:MM:SS
             hh, mm, ss = parts[0], parts[1], parts[2]
             return f"[{hh}:{mm}:{ss}]"
@@ -1114,11 +1221,11 @@ def format_srt_time_to_timestamp_prefix(time_str: str) -> str:
             # Fallback for any other unexpected format
             logger.warning(f"Unexpected time format in SRT: {time_str}")
             return f"[{time_str.split(',')[0]}]"
-            
+
     except Exception as e:
         logger.error(f"Error formatting SRT time '{time_str}': {e}")
         return f"[{time_str.split(',')[0]}]"  # Return a basic timestamp as fallback
-    
+
 # Helper function to create timestamped TXT from SRT
 def create_timestamped_txt_from_srt(srt_path: str, output_txt_path: str, header_content: str = "") -> bool:
     try:
@@ -1135,7 +1242,7 @@ def create_timestamped_txt_from_srt(srt_path: str, output_txt_path: str, header_
 
         with open(srt_path, 'r', encoding='utf-8') as srt_file, \
              open(output_txt_path, 'w', encoding='utf-8') as txt_file:
-            
+
             if header_content:
                 txt_file.write(header_content)
 
@@ -1146,14 +1253,14 @@ def create_timestamped_txt_from_srt(srt_path: str, output_txt_path: str, header_
                 if not line:
                     i += 1
                     continue
-                
+
                 try:
                     # Check if the line is a sequence number
                     int(line)
                     if i + 1 < len(lines) and "-->" in lines[i+1]:
                         time_line = lines[i+1].strip()
                         start_time_str = time_line.split(" --> ")[0]
-                        
+
                         # Get the full timestamp, which will be [hh:mm:ss] if hours are present
                         full_timestamp = format_srt_time_to_timestamp_prefix(start_time_str)
                         final_timestamp = full_timestamp
@@ -1167,7 +1274,7 @@ def create_timestamped_txt_from_srt(srt_path: str, output_txt_path: str, header_
                         while i < len(lines) and lines[i].strip():
                             text_block.append(lines[i].strip())
                             i += 1
-                        
+
                         if text_block:
                             full_text = " ".join(text_block)
                             txt_file.write(f"{final_timestamp} {full_text}\n")
@@ -1176,7 +1283,7 @@ def create_timestamped_txt_from_srt(srt_path: str, output_txt_path: str, header_
                     # Not a sequence number, so we move on
                     pass
                 i += 1
-                
+
         logger.info(f"Successfully created timestamped TXT: {output_txt_path}")
         return True
     except FileNotFoundError:
@@ -1341,7 +1448,7 @@ def process_video_details(video_details, url):
         'video_url': video_details.get('webpage_url', url),
         'tags': tags_display,
         'description': description_text,
-        'audio_duration': int(video_details.get('duration', 0))      
+        'audio_duration': int(video_details.get('duration', 0))
     }
 
 # Helper function to get up to n lines from the description
@@ -1432,15 +1539,15 @@ def estimate_transcription_time(model, audio_duration):
     if audio_duration is None or audio_duration <= 0:
         logger.error(f"Invalid audio duration: {audio_duration}")
         return 0
-    
+
     logger.info(f"Estimating transcription time for model: {model} and audio duration: {audio_duration} seconds")
-    
+
     # Assume 'large' model takes its duration equal to the audio's duration to transcribe.
     # Scale other models based on their relative speed.
     baseline_time = audio_duration  # This is for the 'large' model as a baseline
     relative_speed = model_speeds.get(model, 1)  # Default to 1 if model not found
     estimated_time = baseline_time / relative_speed
-    
+
     logger.info(f"Estimated transcription time: {estimated_time} seconds")
     return max(estimated_time, 60)  # Ensure at least 1 minute is shown
 
@@ -1469,7 +1576,7 @@ def get_best_gpu():
     if not gpus:
         logger.error("No GPUs found")
         return None  # Return None instead of 'cpu'
-    
+
     best_gpu = max(gpus, key=lambda gpu: gpu.memoryFree)
     return best_gpu if best_gpu.memoryFree > 0 else None  # Return None if no GPU has free memory
 

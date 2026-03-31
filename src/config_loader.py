@@ -207,6 +207,42 @@ class ConfigLoader:
         config = cls.get_config()
         return config.getboolean('OwnerSettings', 'ping_owners_on_start', fallback=False)
 
+    @classmethod
+    def get_whisper_api_settings(cls):
+        config = cls.get_config()
+        min_speakers_str = config.get('WhisperAPISettings', 'min_speakers', fallback='')
+        max_speakers_str = config.get('WhisperAPISettings', 'max_speakers', fallback='')
+
+        min_speakers = None
+        max_speakers = None
+
+        if min_speakers_str.strip():
+            try:
+                min_speakers = int(min_speakers_str)
+            except ValueError:
+                logger.warning(f"Invalid min_speakers value: {min_speakers_str}")
+
+        if max_speakers_str.strip():
+            try:
+                max_speakers = int(max_speakers_str)
+            except ValueError:
+                logger.warning(f"Invalid max_speakers value: {max_speakers_str}")
+
+        return {
+            'use_api_mode': config.getboolean('WhisperAPISettings', 'use_api_mode', fallback=False),
+            'api_url': config.get('WhisperAPISettings', 'api_url', fallback='http://localhost:9000'),
+            'api_engine': config.get('WhisperAPISettings', 'api_engine', fallback='faster_whisper'),
+            'verify_ssl': config.getboolean('WhisperAPISettings', 'verify_ssl', fallback=True),
+            'enable_diarization': config.getboolean('WhisperAPISettings', 'enable_diarization', fallback=False),
+            'min_speakers': min_speakers,
+            'max_speakers': max_speakers,
+            'enable_vad_filter': config.getboolean('WhisperAPISettings', 'enable_vad_filter', fallback=True),
+            'enable_word_timestamps': config.getboolean('WhisperAPISettings', 'enable_word_timestamps', fallback=False),
+            'api_timeout': config.getint('WhisperAPISettings', 'api_timeout', fallback=300),
+            'api_retry_attempts': config.getint('WhisperAPISettings', 'api_retry_attempts', fallback=3),
+            'fallback_to_local': config.getboolean('WhisperAPISettings', 'fallback_to_local', fallback=False),
+        }
+
 # Usage example:
 # from config_loader import ConfigLoader
 # notification_settings = ConfigLoader.get_notification_settings()
