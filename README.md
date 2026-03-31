@@ -146,7 +146,11 @@ Just grab the latest pre-built version with:
    ```bash
    docker pull ghcr.io/flyingfathead/whisper-transcriber-telegram-bot:latest
    ```
+
+There is a `docker-compose.example.yaml` file in the repo, you can use it to run the bot. Just make sure to replace the `TELEGRAM_BOT_TOKEN` with your actual bot token.
+
 ---
+
 #### Dockerfile Install Option 2: Build the Docker image yourself
 
 If there's something wrong with GHCR's prebuilt image, you can also build the Docker image yourself.
