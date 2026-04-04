@@ -327,16 +327,25 @@ class TranscriberBot:
                                 estimated_time = estimate_transcription_time(model, audio_duration)
                                 estimated_minutes = estimated_time / 60  # Convert to minutes for user-friendly display
 
+                                current_time = datetime.now()
+                                estimated_finish_time = current_time + timedelta(seconds=estimated_time)
+
+                                time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
+                                estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
+
                                 formatted_audio_duration = format_duration(audio_duration)
                                 language_setting = language if language else "autodetection"
 
                                 if self.notification_settings['send_detailed_info']:
-                                    audio_info_template = self.notification_settings['audio_info_message']
-                                    detailed_message = audio_info_template.format(
-                                        audio_duration=formatted_audio_duration,
-                                        model=model,
-                                        language=language_setting,
-                                        est_time=estimated_minutes,
+                                    detailed_message = (
+                                        self.notification_settings['detailed_message_template'].format(
+                                            audio_duration=formatted_audio_duration,
+                                            model=model,
+                                            language=language_setting,
+                                            est_time=estimated_minutes,
+                                            time_now=time_now_str,
+                                            est_finish_time=estimated_finish_time_str
+                                        )
                                     )
                                     logger.info(detailed_message)
                                     try:

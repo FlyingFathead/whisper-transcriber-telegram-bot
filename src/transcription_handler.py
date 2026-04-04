@@ -19,7 +19,7 @@ import os
 import textwrap
 import configparser
 from urllib.parse import urlparse, parse_qs
-from datetime import datetime
+from datetime import datetime, timedelta
 from shlex import split as shlex_split
 # import wave
 from pydub import AudioSegment
@@ -686,7 +686,6 @@ async def process_url_message(message_text, bot, update, model, language):
         notification_settings = ConfigLoader.get_notification_settings()
         gpu_template = notification_settings['gpu_message_template']
         gpu_no_gpu   = notification_settings['gpu_message_no_gpu']
-        audio_info_template = notification_settings['audio_info_message']
         should_send_detailed_info = notification_settings['send_detailed_info']
         send_video_info = notification_settings['send_video_info']
 
@@ -834,6 +833,11 @@ async def process_url_message(message_text, bot, update, model, language):
             audio_duration = details.get('audio_duration', 0)
             estimated_time = estimate_transcription_time(model, audio_duration)
             estimated_minutes = estimated_time / 60
+            current_time = datetime.now()
+            estimated_finish_time = current_time + timedelta(minutes=estimated_minutes)
+
+            time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
+            estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
             log_message = (
                 f"User ID: {user_id}\n"
                 f"Requested URL for transcription: {normalized_url}\n"
@@ -866,11 +870,15 @@ async def process_url_message(message_text, bot, update, model, language):
 
             # If user wants the detailed transcription message, send it
             formatted_audio_duration = format_duration(audio_duration)
-            detailed_message = audio_info_template.format(
-                audio_duration=formatted_audio_duration,
-                model=model,
-                language=language_setting,
-                est_time=estimated_minutes,
+            detailed_message = (
+                notification_settings['detailed_message_template'].format(
+                    audio_duration=formatted_audio_duration,
+                    model=model,
+                    language=language_setting,
+                    est_time=estimated_minutes,
+                    time_now=time_now_str,
+                    est_finish_time=estimated_finish_time_str
+                )
             )
 
             # log the detailed info whether or not we're sending it to the user
@@ -1472,3 +1480,4 @@ def log_gpu_utilization():
     gpus = GPUtil.getGPUs()
     for gpu in gpus:
         logger.info(f"GPU {gpu.id}: {gpu.name}, Load: {gpu.load * 100:.1f}%, Free Memory: {gpu.memoryFree} MB, Used Memory: {gpu.memoryUsed} MB, Total Memory: {gpu.memoryTotal} MB")
+MB")

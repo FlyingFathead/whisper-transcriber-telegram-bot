@@ -86,6 +86,16 @@ class ConfigLoader:
         # Convert \n → actual newlines
         audio_info_message = _parse_newlines(audio_info_message_raw)
 
+        detailed_message_template_raw = config.get(
+            'NotificationSettings', 'detailed_message_template',
+            fallback="Audio file length:\n{audio_duration}\n\nWhisper model in use:\n{model}\n\n"
+                     "Model language set to:\n{language}\n\nEstimated transcription time:\n{est_time:.1f} minutes.\n\n"
+                     "Time now:\n{time_now}\n\n"
+                     "Time when finished (estimate):\n{est_finish_time}\n\n🎙️✍️ Transcribing audio..."
+        )
+
+        detailed_message_template = _parse_newlines(detailed_message_template_raw)
+
         gpu_message_template_raw = config.get(
             'NotificationSettings', 'gpu_message_template',
             fallback="Using GPU {gpu_id}: {gpu_name}\nFree Memory: {gpu_free} MB\nLoad: {gpu_load}%"
@@ -110,6 +120,7 @@ class ConfigLoader:
             'queue_message_next': queue_message_next,
             'queue_message_queued': queue_message_queued,
             'audio_info_message': audio_info_message,
+            'detailed_message_template': detailed_message_template,
             'gpu_message_template': gpu_message_template,
             'gpu_message_no_gpu': gpu_message_no_gpu,
             'send_video_info': send_video_info,
