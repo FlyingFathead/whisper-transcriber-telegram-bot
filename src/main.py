@@ -338,13 +338,14 @@ class TranscriberBot:
 
                                 if self.notification_settings['send_detailed_info']:
                                     detailed_message = (
-                                        f"Audio file length:\n{formatted_audio_duration}\n\n"
-                                        f"Whisper model in use:\n{model}\n\n"
-                                        f"Model language set to:\n{language_setting}\n\n"
-                                        f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
-                                        f"Time now:\n{time_now_str}\n\n"
-                                        f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
-                                        "Transcribing audio..."
+                                        self.notification_settings['detailed_message_template'].format(
+                                            audio_duration=formatted_audio_duration,
+                                            model=model,
+                                            language=language_setting,
+                                            est_time=estimated_minutes,
+                                            time_now=time_now_str,
+                                            est_finish_time=estimated_finish_time_str
+                                        )
                                     )
                                     logger.info(detailed_message)
                                     try:
@@ -815,12 +816,15 @@ class TranscriberBot:
                 # Queue the audio file for transcription
                 await self.task_queue.put((audio_file_path, context.bot, update))
                 queue_length = self.task_queue.qsize()
-                response_text = (
-                    "Your request is next and is currently being processed."
-                    if queue_length == 1
-                    else f"Your request has been added to the queue. There are {queue_length - 1} jobs ahead of yours."
-                )
-                await update.message.reply_text(response_text)
+                msg_next = self.notification_settings['queue_message_next']
+                msg_queued = self.notification_settings['queue_message_queued']
+                if queue_length == 1:
+                    if msg_next.strip():
+                        await update.message.reply_text(msg_next)
+                else:
+                    if msg_queued.strip():
+                        jobs_ahead = queue_length - 1
+                        await update.message.reply_text(msg_queued.replace("{jobs_ahead}", str(jobs_ahead)))
                 logger.info(f"Audio file queued for transcription. Queue length: {queue_length}")
 
             except subprocess.CalledProcessError as e:

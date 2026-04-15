@@ -687,7 +687,7 @@ async def process_url_message(message_text, bot, update, model, language):
         gpu_template = notification_settings['gpu_message_template']
         gpu_no_gpu   = notification_settings['gpu_message_no_gpu']
         should_send_detailed_info = notification_settings['send_detailed_info']
-        send_video_info = notification_settings['send_video_info'] 
+        send_video_info = notification_settings['send_video_info']
 
         # for yt-dlp version debugging
         await debug_yt_dlp_version()
@@ -838,7 +838,6 @@ async def process_url_message(message_text, bot, update, model, language):
 
             time_now_str = current_time.strftime('%Y-%m-%d %H:%M:%S')
             estimated_finish_time_str = estimated_finish_time.strftime('%Y-%m-%d %H:%M:%S')
-
             log_message = (
                 f"User ID: {user_id}\n"
                 f"Requested URL for transcription: {normalized_url}\n"
@@ -870,13 +869,16 @@ async def process_url_message(message_text, bot, update, model, language):
             language_setting = language if language else "autodetection"
 
             # If user wants the detailed transcription message, send it
+            formatted_audio_duration = format_duration(audio_duration)
             detailed_message = (
-                f"Whisper model in use:\n{model}\n\n"
-                f"Model language set to:\n{language_setting}\n\n"
-                f"Estimated transcription time:\n{estimated_minutes:.1f} minutes.\n\n"
-                f"Time now:\n{time_now_str}\n\n"
-                f"Time when finished (estimate):\n{estimated_finish_time_str}\n\n"
-                "🎙️✍️ Transcribing audio..."
+                notification_settings['detailed_message_template'].format(
+                    audio_duration=formatted_audio_duration,
+                    model=model,
+                    language=language_setting,
+                    est_time=estimated_minutes,
+                    time_now=time_now_str,
+                    est_finish_time=estimated_finish_time_str
+                )
             )
 
             # log the detailed info whether or not we're sending it to the user
@@ -1478,3 +1480,4 @@ def log_gpu_utilization():
     gpus = GPUtil.getGPUs()
     for gpu in gpus:
         logger.info(f"GPU {gpu.id}: {gpu.name}, Load: {gpu.load * 100:.1f}%, Free Memory: {gpu.memoryFree} MB, Used Memory: {gpu.memoryUsed} MB, Total Memory: {gpu.memoryTotal} MB")
+MB")
