@@ -583,14 +583,35 @@ async def transcribe_audio(bot, update, audio_path, output_dir, youtube_url, vid
             stderr=asyncio.subprocess.PIPE
         )
 
+        stderr_lines = []
+
+        def log_and_capture_stderr(line):
+            log_stderr(line)
+            stderr_lines.append(line)
+
         # Concurrently log stdout and stderr
         await asyncio.gather(
             read_stream(process.stdout, log_stdout),
-            read_stream(process.stderr, log_stderr)
+            read_stream(process.stderr, log_and_capture_stderr),
         )
 
         # Wait for the subprocess to finish
         await process.wait()
+
+        stderr_text = "".join(stderr_lines)
+
+        if process.returncode != 0 and (
+            "SHA256 checksum does not match" in stderr_text
+            or "re-downloading the file" in stderr_text
+        ):
+            error_msg = (
+                f"❌ Whisper model cache corrupted (SHA256 mismatch) for model '{model}'. "
+                f"The model file in the cache dir is incomplete or damaged, likely due to a "
+                f"timed-out download."
+            )
+            logger.error(error_msg)
+            await bot.send_message(chat_id=update.effective_chat.id, text=error_msg)
+            return {}, ""
 
         if process.returncode != 0:
             logger.error(f"Whisper process failed with return code {process.returncode}")
